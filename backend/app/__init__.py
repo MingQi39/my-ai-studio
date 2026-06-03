@@ -1,0 +1,1 @@
+"""MyAI Studio Backend Application."""

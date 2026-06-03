@@ -1,0 +1,361 @@
+import React, { useState, useEffect } from 'react';
+import { MessageSquare, Layers, BarChart2, Settings, Moon, Sun, Sparkles, ChevronRight, LogOut, ChevronDown, Trash2, Calendar, ExternalLink } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Separator } from '@/components/ui/separator';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import { User, SessionResponse, listSessions, deleteSession as apiDeleteSession } from '@/services/api';
+import logo from '@/assets/logo.png';
+
+interface AppSidebarProps {
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+  isDarkMode: boolean;
+  toggleTheme: () => void;
+  currentUser?: User | null;
+  onLogout?: () => void;
+  currentSessionId: string | null;
+  onSelectSession: (sessionId: string) => void;
+  onSessionsChange?: () => void;
+  sessionRefreshTrigger?: number;
+}
+
+export function AppSidebar({
+  activeTab,
+  onTabChange,
+  isDarkMode,
+  toggleTheme,
+  currentUser,
+  onLogout,
+  currentSessionId,
+  onSelectSession,
+  onSessionsChange,
+  sessionRefreshTrigger
+}: AppSidebarProps) {
+  const { t, i18n } = useTranslation();
+  const [isHistoryOpen, setIsHistoryOpen] = useState(true);
+  const [sessions, setSessions] = useState<SessionResponse[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+
+  // 确认对话框状态
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+
+  // 加载会话列表
+  const loadSessions = async () => {
+    try {
+      setIsLoadingSessions(true);
+      const response = await listSessions(1, 50, false);
+      setSessions(response.items);
+    } catch (error) {
+      console.error('Failed to load sessions:', error);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+  // 当展开历史会话或触发器变化时加载
+  useEffect(() => {
+    if (isHistoryOpen) {
+      loadSessions();
+    }
+  }, [isHistoryOpen, sessionRefreshTrigger]);
+
+  // 定期刷新会话列表
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isHistoryOpen) {
+        loadSessions();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isHistoryOpen]);
+
+  const handleUserClick = () => {
+    toast.info(t('sidebar.openProfile'));
+  };
+
+  const handleLogout = () => {
+    if (onLogout) {
+      onLogout();
+      toast.success(t('sidebar.loggedOut'));
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSessionToDelete(sessionId);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteSession = async () => {
+    if (!sessionToDelete) return;
+
+    try {
+      await apiDeleteSession(sessionToDelete);
+      setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
+
+      if (currentSessionId === sessionToDelete) {
+        onSelectSession('');
+      }
+
+      toast.success(t('sidebar.sessionDeleted'));
+      onSessionsChange?.();
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      toast.error(t('sidebar.deleteFailed'));
+    } finally {
+      setSessionToDelete(null);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    if (days === 0) return t('common.today');
+    if (days === 1) return t('common.yesterday');
+    if (days < 7) return t('common.daysAgo', { count: days });
+    return date.toLocaleDateString(i18n.language, { month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <div className="w-full h-full flex flex-col whitespace-nowrap">
+
+      {/* Header */}
+      <a
+        href="http://houmq.cn/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="h-[70px] flex items-center px-5 gap-3 pt-2 flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity no-underline group"
+      >
+        <img src={logo} alt="Logo" className="w-8 h-8 rounded-lg shadow-sm group-hover:shadow-md transition-all object-cover" />
+        <div className="flex items-center gap-2">
+          <h1 className="font-semibold text-[18px] tracking-tight text-[var(--text-primary)]">{t('common.appName')}</h1>
+          <ExternalLink size={14} className="text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+      </a>
+
+      {/* Navigation & Sessions - Scrollable */}
+      <ScrollArea className="flex-1 px-3 mt-4 custom-scrollbar">
+        <div className="flex flex-col gap-1 pb-4">
+
+          {/* 历史会话 - 可折叠 */}
+          <Collapsible open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+            <CollapsibleTrigger asChild>
+              <button
+                className={`
+                  w-full flex items-center justify-between px-3 h-[40px] rounded-lg text-sm font-medium transition-all group
+                  ${isHistoryOpen
+                    ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-text)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}
+                `}
+              >
+                <div className="flex items-center gap-3">
+                  <MessageSquare size={20} />
+                  <span>{t('sidebar.history')}</span>
+                </div>
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${isHistoryOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+            </CollapsibleTrigger>
+
+            <CollapsibleContent className="mt-1">
+              <div className="pl-2 space-y-0.5">
+                {isLoadingSessions ? (
+                  <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
+                    {t('common.loading')}
+                  </div>
+                ) : sessions.length === 0 ? (
+                  <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
+                    {t('sidebar.noSessions')}
+                  </div>
+                ) : (
+                  sessions
+                    .filter(session => session.message_count > 0)
+                    .slice(0, 10)
+                    .map((session) => {
+                      const isActive = currentSessionId === session.id;
+
+                      return (
+                        <div
+                          key={session.id}
+                          onClick={() => onSelectSession(session.id)}
+                          className={`
+                          relative group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer
+                          transition-all duration-200 text-xs
+                          ${isActive
+                              ? 'bg-blue-500/10 text-blue-500'
+                              : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]'
+                            }
+                        `}
+                        >
+                          {isActive && (
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full" />
+                          )}
+
+                          <MessageSquare size={14} className="flex-shrink-0" />
+
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate font-medium">
+                              {session.title || t('sidebar.untitledSession')}
+                            </p>
+                            <p className="text-[10px] text-[var(--text-secondary)] truncate">
+                              {t('sidebar.messageCount', { count: session.message_count })} · {formatDate(session.updated_at)}
+                            </p>
+                          </div>
+
+                          <button
+                            onClick={(e) => handleDeleteSession(session.id, e)}
+                            className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* 其他导航按钮 */}
+          <NavButton
+            icon={<Layers size={20} />}
+            label={t('sidebar.batchJobs')}
+            id="batch-jobs"
+            isActive={activeTab === 'batch-jobs'}
+            onClick={() => onTabChange('batch-jobs')}
+          />
+          <NavButton
+            icon={<BarChart2 size={20} />}
+            label={t('sidebar.evaluation')}
+            id="evaluation"
+            isActive={activeTab === 'evaluation'}
+            onClick={() => onTabChange('evaluation')}
+          />
+        </div>
+      </ScrollArea>
+
+      {/* Bottom Section (Footer) */}
+      <div className="px-3 pb-6 flex-shrink-0">
+        <div className="flex flex-col gap-1">
+          <Separator className="bg-[var(--border-color)] my-3 opacity-50" />
+
+          {/* Theme Toggle */}
+          <button
+            onClick={() => {
+              toggleTheme();
+              toast.success(t('sidebar.themeSwitched', { mode: isDarkMode ? t('sidebar.lightMode') : t('sidebar.darkMode') }));
+            }}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors group w-full"
+          >
+            {isDarkMode ? (
+              <Sun size={20} className="group-hover:text-[var(--text-primary)] transition-colors" />
+            ) : (
+              <Moon size={20} className="group-hover:text-[var(--text-primary)] transition-colors" />
+            )}
+            <span className="text-sm font-medium group-hover:text-[var(--text-primary)] transition-colors">
+              {isDarkMode ? t('sidebar.lightMode') : t('sidebar.darkMode')}
+            </span>
+          </button>
+
+          {/* Language Switcher */}
+          <LanguageSwitcher dropUp />
+
+          {/* Settings */}
+          <NavButton
+            icon={<Settings size={20} />}
+            label={t('sidebar.settings')}
+            id="settings"
+            isActive={activeTab === 'settings'}
+            onClick={() => onTabChange('settings')}
+          />
+
+          {/* User Profile & Logout */}
+          <div
+            className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors w-full group mt-1 cursor-pointer select-none"
+            onClick={handleUserClick}
+          >
+            <div className="flex items-center gap-3 overflow-hidden">
+              <Avatar className="h-6 w-6 border border-[var(--border-color)]">
+                <AvatarImage src="https://github.com/shadcn.png" />
+                <AvatarFallback>{currentUser?.username?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate">
+                {currentUser?.username || t('sidebar.user')}
+              </span>
+            </div>
+
+            {currentUser && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleLogout();
+                }}
+                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/10 rounded-md text-[var(--text-secondary)] hover:text-red-500 transition-all"
+                title={t('sidebar.logout')}
+              >
+                <LogOut size={16} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 确认删除对话框 */}
+      <ConfirmDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => {
+          setIsDeleteDialogOpen(false);
+          setSessionToDelete(null);
+        }}
+        onConfirm={confirmDeleteSession}
+        title={t('sidebar.deleteSessionTitle')}
+        message={t('sidebar.deleteSessionMessage')}
+        confirmText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        isDarkMode={isDarkMode}
+        type="danger"
+      />
+    </div>
+  );
+}
+
+interface NavButtonProps {
+  icon: React.ReactNode;
+  label: string;
+  id: string;
+  isActive?: boolean;
+  hasBadge?: boolean;
+  onClick?: () => void;
+}
+
+function NavButton({ icon, label, isActive = false, hasBadge = false, onClick }: NavButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        flex items-center gap-3 px-3 h-[40px] rounded-lg text-sm font-medium transition-all w-full text-left group
+        ${isActive
+          ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-text)]'
+          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}
+      `}
+    >
+      <span className={isActive ? '' : 'group-hover:text-[var(--text-primary)]'}>{icon}</span>
+      <span className="flex-1">{label}</span>
+      {hasBadge && (
+        <Sparkles size={14} className="text-blue-400 fill-blue-400/20" />
+      )}
+      <ChevronRight size={14} className={`transition-opacity ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
+    </button>
+  );
+}
