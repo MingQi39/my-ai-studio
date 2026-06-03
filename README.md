@@ -2,6 +2,12 @@
 
 A full-stack AI chat workspace: multi-provider LLM connections, streaming chat, session history, system prompts, and a polished React UI with **9-language i18n** (English default).
 
+## Demo
+
+<video src="docs/images/demo1.mp4" controls playsinline width="100%"></video>
+
+<video src="docs/images/demo2.mp4" controls playsinline width="100%"></video>
+
 ## Highlights (portfolio / Upwork)
 
 - **International-ready UI** — English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Русский

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Menu, Code2, Sparkles, Image as ImageIcon, FileText, X, ChevronDown, Video, Terminal, Loader2, StopCircle, Plus, Bot, Zap, Copy, ExternalLink, MessageSquarePlus, Trash2, Cloud, Settings2, ArrowUp } from 'lucide-react';
+import { Menu, Code2, Sparkles, Image as ImageIcon, FileText, X, ChevronDown, Video, Terminal, Loader2, StopCircle, Plus, Bot, Zap, Copy, ExternalLink, MessageSquarePlus, Trash2, Cloud, Settings2, ArrowUp, LayoutGrid } from 'lucide-react';
 import { MessageContent } from '@/components/MessageContent';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -26,7 +26,7 @@ import {
    ModelConfigResponse,
 } from '@/services/api';
 
-import logo from '@/assets/logo.png';
+import { BrandLogo } from '@/components/BrandLogo';
 
 // Types for our Messages
 type Message = {
@@ -549,7 +549,7 @@ export function MainWorkspace({
             ) : messages.length === 0 && currentSessionId ? (
                <div className="w-full max-w-[850px] mx-auto flex flex-col items-center justify-center pt-[20vh] px-6">
                   <div className="text-center">
-                     <Sparkles size={48} className="mx-auto mb-4 text-[var(--text-secondary)] opacity-50" />
+                     <BrandLogo size="lg" className="mx-auto mb-4 opacity-90" alt={t('common.appName')} />
                      <p className="text-lg text-[var(--text-secondary)]">{t('workspace.startTalking')}</p>
                      <p className="text-sm text-[var(--text-placeholder)] mt-2">{t('workspace.promptHint')}</p>
                   </div>
@@ -934,7 +934,7 @@ function Launchpad({
       <div className="w-full max-w-[850px] mx-auto flex flex-col items-center pt-[5vh] px-6 pb-12">
          <div className="text-center flex flex-col items-center mb-8 gap-4">
             <div className="rounded-2xl shadow-sm overflow-hidden p-2">
-               <img src={logo} alt="Logo" className="w-[72px] h-[72px] object-cover rounded-xl" />
+               <BrandLogo size="xl" alt={t('common.appName')} />
             </div>
             <div className="flex flex-col gap-2">
                <h1 className="text-[24px] font-semibold text-[var(--text-primary)] tracking-tight">{t('launchpad.title')}</h1>

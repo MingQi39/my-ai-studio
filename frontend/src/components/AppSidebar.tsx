@@ -9,7 +9,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { User, SessionResponse, listSessions, deleteSession as apiDeleteSession } from '@/services/api';
-import logo from '@/assets/logo.png';
+import { BrandLogo } from '@/components/BrandLogo';
 
 interface AppSidebarProps {
   activeTab: string;
@@ -135,7 +135,7 @@ export function AppSidebar({
         rel="noopener noreferrer"
         className="h-[70px] flex items-center px-5 gap-3 pt-2 flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity no-underline group"
       >
-        <img src={logo} alt="Logo" className="w-8 h-8 rounded-lg shadow-sm group-hover:shadow-md transition-all object-cover" />
+        <BrandLogo size="sm" className="group-hover:shadow-md transition-shadow" alt={t('common.appName')} />
         <div className="flex items-center gap-2">
           <h1 className="font-semibold text-[18px] tracking-tight text-[var(--text-primary)]">{t('common.appName')}</h1>
           <ExternalLink size={14} className="text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -287,7 +287,7 @@ export function AppSidebar({
           >
             <div className="flex items-center gap-3 overflow-hidden">
               <Avatar className="h-6 w-6 border border-[var(--border-color)]">
-                <AvatarImage src="https://github.com/shadcn.png" />
+                <AvatarImage src="https://github.com/MingQi39.png" />
                 <AvatarFallback>{currentUser?.username?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
               </Avatar>
               <span className="text-sm font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate">

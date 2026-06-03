@@ -9,7 +9,7 @@ import { Loader2, Mail, Lock, User as UserIcon, Sun, Moon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ParticlesBackground } from './ParticlesBackground';
 import { LanguageSwitcher } from './LanguageSwitcher';
-import logoImg from '@/assets/logo.png';
+import { BrandLogo } from '@/components/BrandLogo';
 
 interface AuthPageProps {
   onAuthSuccess: (user: User) => void;
@@ -236,10 +236,10 @@ export function AuthPage({ onAuthSuccess, isDarkMode = false, toggleTheme }: Aut
             }`}>
             <CardHeader className="text-center pb-2 pt-8">
               <div className="mx-auto mb-4 relative">
-                <img
-                  src={logoImg}
+                <BrandLogo
+                  size="lg"
                   alt={t('common.appName')}
-                  className="w-20 h-20 mx-auto transition-transform hover:scale-110 duration-300"
+                  className="mx-auto transition-transform hover:scale-110 duration-300"
                 />
               </div>
               <CardTitle className={`text-3xl font-bold tracking-tight mb-2 ${isDarkMode ? 'text-white' : 'text-slate-900'
