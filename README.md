@@ -4,9 +4,9 @@ A full-stack AI chat workspace: multi-provider LLM connections, streaming chat, 
 
 ## Demo
 
-<video src="docs/images/demo1.mp4" controls playsinline width="100%"></video>
+![Demo 1](docs/images/demo1.gif)
 
-<video src="docs/images/demo2.mp4" controls playsinline width="100%"></video>
+![Demo 2](docs/images/demo2.gif)
 
 ## Highlights (portfolio / Upwork)
 
