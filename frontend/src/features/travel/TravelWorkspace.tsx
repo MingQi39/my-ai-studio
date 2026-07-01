@@ -1,37 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
-    GitCompare, Brain, Wrench, Settings,
-    Send, ChevronDown, ChevronRight, Terminal,
-    CheckCircle2, AlertTriangle, Search, Lightbulb, Activity, Code2,
+    Brain, Activity, Wrench, Settings,
+    Terminal,
+    Code2,
     FileJson, MessageSquare, Play, ListFilter,
     CloudSun, Landmark, Building2, Train, Calculator, UtensilsCrossed, Copy, Check, X, Plus,
-    Eye, EyeOff, Save, Plug, AlertCircle, RefreshCw, Loader2, Menu, PanelRight,
-    ArrowDown,
-    FileDown,
+    Eye, EyeOff, Save, Plug, AlertCircle, AlertTriangle, CheckCircle2, RefreshCw, Loader2, Menu, PanelRight,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-
-// 导入新的状态管理和 Hooks
-import { toast } from 'sonner';
-import { useChatStore, type Message, type ReActStep, type ToolCall } from '@/features/travel/stores/useChatStore';
-import { useCompare } from '@/features/travel/hooks/useCompare';
-import { useChat } from '@/features/travel/hooks/useChat';
-import { useChatAutoScroll } from '@/features/travel/hooks/useChatAutoScroll';
-import { useTravelSessionRestore } from '@/features/travel/hooks/useTravelSessionRestore';
-import { useTravelSessionRoute } from '@/features/travel/hooks/useTravelSessionRoute';
-import { groupCompareTurns, type CompareTurn } from '@/features/travel/utils/compareTurns';
+import { ActiveModelBadge } from '@/components/ActiveModelBadge';
+import { TravelChatView } from '@/features/travel/components/TravelChatView';
+import { ReActTimeline } from '@/features/travel/components/ReActTimeline';
 import { useReactStore } from '@/features/travel/stores/useReactStore';
 import { useReactTrace } from '@/features/travel/hooks/useReactTrace';
 import { fetchToolsList, testTool, type Tool } from '@/features/travel/services/api/tools';
 import { fetchTravelSettings, updateTravelSettings, type TravelSettings } from '@/features/travel/services/api/settings';
-import { BrandLogo } from '@/components/BrandLogo';
-import { ActiveModelBadge } from '@/components/ActiveModelBadge';
-import { branding } from '@/features/travel/config/branding';
-import { PlanExportToolbar } from '@/features/travel/components/PlanExportToolbar';
-import { copyTextToClipboard } from '@/features/travel/utils/exportPlan';
 
 interface TravelWorkspaceProps {
     activeTab: string;
@@ -104,11 +88,15 @@ export function TravelWorkspace({
 
             <main className="flex-1 min-h-0 overflow-hidden">
                 {activeTab === 'chat' ? (
-                    <ChatView onOpenModelSettings={onOpenModelSettings} selectedModel={selectedModel} />
+                    <TravelChatView
+                        isDarkMode={isDarkMode}
+                        onOpenModelSettings={onOpenModelSettings}
+                        selectedModel={selectedModel}
+                    />
                 ) : (
                     <div className="h-full overflow-y-auto p-6 custom-scrollbar">
                         <div className="max-w-6xl mx-auto w-full">
-                            {activeTab === 'react' && <ReactView showToast={showToast} selectedModel={selectedModel} />}
+                            {activeTab === 'react' && <ReactView showToast={showToast} selectedModel={selectedModel} isDarkMode={isDarkMode} />}
                             {activeTab === 'tools' && <ToolsView showToast={showToast} />}
                             {activeTab === 'settings' && (
                                 <SettingsView showToast={showToast} onOpenModelSettings={onOpenModelSettings} />
@@ -123,523 +111,16 @@ export function TravelWorkspace({
 
 /* ================= 页面视图组件 ================= */
 
-function ChatView({ onOpenModelSettings, selectedModel = '' }: { onOpenModelSettings?: () => void; selectedModel?: string }) {
-    const { t } = useTranslation();
-    const { messages, isGenerating, isLoadingHistory, chatMode, setChatMode } = useChatStore();
-    useTravelSessionRoute();
-    useTravelSessionRestore();
-    const { sendMessage: sendChatMessage } = useChat();
-    const { sendMessage: sendCompareMessage } = useCompare();
-    const [inputValue, setInputValue] = useState('');
-    const [isCompareMode, setIsCompareMode] = useState(false);
-    const [exportToolbarOpen, setExportToolbarOpen] = useState(false);
-    const {
-        scrollContainerRef,
-        scrollSentinelRef,
-        showJumpButton,
-        scrollToBottom,
-    } = useChatAutoScroll({
-        deps: [messages, isGenerating],
-        active: messages.length > 0,
-    });
 
-    const handleSend = (textStr: string | React.FormEvent) => {
-        const text = typeof textStr === 'string' ? textStr : inputValue;
-        if (!text.trim() || isGenerating) return;
-
-        setInputValue('');
-        scrollToBottom('auto');
-        if (isCompareMode) {
-            sendCompareMessage(text).catch((err) => {
-                console.error(err);
-                toast.error(err instanceof Error ? err.message : '发送失败');
-            });
-        } else {
-            sendChatMessage(text).catch((err) => {
-                console.error(err);
-                toast.error(err instanceof Error ? err.message : '发送失败');
-            });
-        }
-    };
-
-    return (
-        <div className="flex-1 flex flex-col w-full h-full relative">
-
-            {/* 聊天记录列表区 */}
-            <div
-                ref={scrollContainerRef}
-                className="flex-1 overflow-y-auto w-full flex flex-col items-center"
-            >
-                {messages.length === 0 ? (
-                    isLoadingHistory ? (
-                    <div className="flex-1 flex flex-col items-center justify-center w-full px-6 pt-20 pb-10">
-                        <Loader2 size={32} className="animate-spin text-[#3B82F6] mb-4" />
-                        <p className="text-slate-500 dark:text-slate-400">正在加载对话历史…</p>
-                    </div>
-                    ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center w-full max-w-3xl px-6 animate-in fade-in duration-500 pt-20 pb-10">
-                        <BrandLogo size="lg" className="mb-4 opacity-90" alt={branding.logoAlt} />
-                        <h1 className="text-3xl font-bold mb-2 tracking-tight text-slate-800 dark:text-slate-100">{branding.tagline}</h1>
-                        <p className="text-slate-500 dark:text-slate-400 mb-10">有什么旅行规划可以帮忙的？</p>
-
-                        {/* 快捷输入标签 */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mb-8">
-                            {['3天杭州游', '北京亲子游', '成都美食之旅'].map(tag => (
-                                <button
-                                    key={tag}
-                                    onClick={() => handleSend(`请帮我规划一个${tag}，预算适中即可。`)}
-                                    className="flex flex-col items-start p-5 bg-white dark:bg-[#151E2E] border border-slate-200 dark:border-slate-800 hover:border-[#3B82F6] dark:hover:border-[#3B82F6] rounded-2xl transition-all shadow-sm group hover:shadow-md"
-                                >
-                                    <span className="text-[15px] font-bold text-slate-800 dark:text-slate-200 group-hover:text-[#3B82F6] transition-colors mb-2">✨ {tag}</span>
-                                    <span className="text-xs text-slate-500 dark:text-slate-400 text-left">点击自动输入并发送，快速体验当前模式的对话效果</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    )
-                ) : isCompareMode ? (
-                    <div className="w-full max-w-7xl px-4 py-8 flex flex-col pb-10">
-                        {groupCompareTurns(messages).map((turn, idx, arr) => (
-                            <CompareTurnBlock
-                                key={turn.user.id}
-                                turn={turn}
-                                showLoading={isGenerating && idx === arr.length - 1}
-                            />
-                        ))}
-                        <div ref={scrollSentinelRef} className="h-px w-full shrink-0" aria-hidden />
-                    </div>
-                ) : (
-                    <div className="w-full max-w-4xl px-4 py-4 flex flex-col pb-10">
-                        <PlanExportToolbar
-                            messages={messages}
-                            disabled={isGenerating}
-                            visible={exportToolbarOpen}
-                            onClose={() => setExportToolbarOpen(false)}
-                        />
-                        {messages.map(msg => <ChatMessage key={msg.id} msg={msg} />)}
-
-                        {isGenerating && (
-                            <div className="flex w-full justify-start mb-6">
-                                <div className="w-8 h-8 rounded-full bg-[#3B82F6] flex items-center justify-center text-white mr-4 flex-shrink-0 mt-0.5 shadow-sm">
-                                    <Brain size={16} />
-                                </div>
-                                <div className="py-2.5 flex items-center gap-2">
-                                    <span className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce"></span>
-                                    <span className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-                                    <span className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
-                                </div>
-                            </div>
-                        )}
-                        <div ref={scrollSentinelRef} className="h-px w-full shrink-0" aria-hidden />
-                    </div>
-                )}
-            </div>
-
-            {showJumpButton && messages.length > 0 && (
-                <button
-                    type="button"
-                    onClick={() => scrollToBottom('smooth')}
-                    className="absolute bottom-36 right-6 z-20 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-4 py-2 text-sm font-medium text-slate-700 shadow-lg backdrop-blur-sm transition-all hover:border-[#3B82F6] hover:text-[#3B82F6] dark:border-slate-700 dark:bg-[#1E293B]/95 dark:text-slate-200 dark:hover:border-[#3B82F6] dark:hover:text-[#3B82F6]"
-                    aria-label="回到底部并恢复自动滚动"
-                >
-                    <ArrowDown size={16} />
-                    回到底部
-                </button>
-            )}
-
-            {/* 底部固定输入区 */}
-            <div className={`w-full mx-auto px-4 pb-2 pt-2 shrink-0 bg-gradient-to-t from-white via-white to-transparent dark:from-[#0F172A] dark:via-[#0F172A] ${isCompareMode ? 'max-w-7xl' : 'max-w-4xl'}`}>
-                <div className="flex flex-col relative w-full shadow-sm bg-white dark:bg-[#1E293B] border border-slate-300 dark:border-slate-700 rounded-2xl focus-within:ring-2 focus-within:ring-[#3B82F6]/50 focus-within:border-[#3B82F6] transition-all overflow-hidden">
-
-                    {/* 模式选择器 (Mode Toggle) */}
-                    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-sm">
-                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mr-1 uppercase tracking-wider">对话模式</span>
-                        <div className="flex bg-slate-200/50 dark:bg-slate-800/50 p-0.5 rounded-lg">
-                            <button
-                                onClick={() => { setIsCompareMode(false); setChatMode('agent'); }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${!isCompareMode && chatMode === 'agent'
-                                        ? 'bg-white dark:bg-[#1E293B] text-[#3B82F6] shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                                    }`}
-                            >
-                                <Brain size={14} /> Agent (ReAct)
-                            </button>
-                            <button
-                                onClick={() => { setIsCompareMode(false); setChatMode('llm'); }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${!isCompareMode && chatMode === 'llm'
-                                        ? 'bg-white dark:bg-[#1E293B] text-blue-500 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                                    }`}
-                            >
-                                <Activity size={14} /> 原生 LLM
-                            </button>
-                            <button
-                                onClick={() => setIsCompareMode(true)}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${isCompareMode
-                                        ? 'bg-white dark:bg-[#1E293B] text-emerald-500 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                                    }`}
-                            >
-                                <GitCompare size={14} /> 对比模式
-                            </button>
-                        </div>
-                        {messages.length > 0 && !isCompareMode && (
-                            <button
-                                type="button"
-                                onClick={() => setExportToolbarOpen(true)}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-                                    exportToolbarOpen
-                                        ? 'bg-white dark:bg-[#1E293B] text-emerald-600 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                                }`}
-                                aria-expanded={exportToolbarOpen}
-                            >
-                                <FileDown size={14} />
-                                {t('travel.export.toolbarLabel')}
-                            </button>
-                        )}
-                        {onOpenModelSettings && (
-                            <ActiveModelBadge
-                                model={selectedModel}
-                                onClick={onOpenModelSettings}
-                                variant="compact"
-                                className="ml-auto max-w-[180px] sm:max-w-[220px]"
-                            />
-                        )}
-                    </div>
-
-                    <div className="relative flex items-end">
-                        <textarea
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleSend(inputValue);
-                                }
-                            }}
-                            placeholder="发送消息..."
-                            className="w-full max-h-48 min-h-[56px] py-4 pl-4 pr-16 bg-transparent border-none outline-none text-[15px] placeholder-slate-400 resize-none overflow-y-auto text-slate-800 dark:text-slate-200"
-                            rows={1}
-                        />
-                        <button
-                            onClick={() => handleSend(inputValue)}
-                            disabled={!inputValue.trim() || isGenerating}
-                            className={`absolute right-3 bottom-3 p-2 rounded-xl transition-all flex items-center justify-center ${inputValue.trim() && !isGenerating
-                                    ? 'bg-[#3B82F6] hover:bg-[#2563EB] text-white shadow-md'
-                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                                }`}
-                        >
-                            <Send size={18} />
-                        </button>
-                    </div>
-                </div>
-                <div className="text-center mt-3 text-[11px] text-slate-400 dark:text-slate-500">
-                    内容由 AI 生成，Agent 模式将调用外部工具验证数据真实性，LLM 模式可能会产生幻觉。
-                </div>
-            </div>
-
-        </div>
-    );
-}
-
-function UserMessageBubble({ msg }: { msg: Message }) {
-    return (
-        <div className="flex w-full justify-end mb-4">
-            <div className="max-w-[85%] md:max-w-[65%] text-[15px] leading-relaxed bg-slate-100 dark:bg-[#2A2B32] text-slate-900 dark:text-slate-100 px-5 py-3.5 rounded-3xl">
-                {msg.content.split('\n').map((line: string, i: number, arr: string[]) => (
-                    <React.Fragment key={i}>
-                        {line}
-                        {i !== arr.length - 1 && <div className="h-3" />}
-                    </React.Fragment>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-function CompareColumnPanel({
-    title,
-    icon,
-    accent,
-    badge,
-    showLoading,
-    children,
+function ReactView({
+    showToast,
+    selectedModel,
+    isDarkMode = false,
 }: {
-    title: string;
-    icon: React.ReactNode;
-    accent: 'blue' | 'emerald';
-    badge: string;
-    showLoading?: boolean;
-    children?: React.ReactNode;
+    showToast: (message: string, type?: string) => void;
+    selectedModel?: string;
+    isDarkMode?: boolean;
 }) {
-    const accentBorder = accent === 'blue' ? 'border-t-blue-500' : 'border-t-emerald-500';
-    const accentText = accent === 'blue' ? 'text-blue-500' : 'text-emerald-500';
-
-    return (
-        <div className={`flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 border-t-2 ${accentBorder} overflow-hidden bg-white dark:bg-[#151E2E] shadow-sm min-h-[120px]`}>
-            <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-[#1E293B]/60 flex items-center gap-2 shrink-0">
-                <span className={accentText}>{icon}</span>
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{title}</span>
-                <span className={`text-[10px] ml-auto ${accent === 'blue' ? 'text-amber-500' : 'text-emerald-500'}`}>{badge}</span>
-                {showLoading && (
-                    <span className="flex items-center gap-1 ml-2">
-                        <span className={`w-1.5 h-1.5 rounded-full animate-bounce ${accentText}`} />
-                        <span className={`w-1.5 h-1.5 rounded-full animate-bounce ${accentText}`} style={{ animationDelay: '0.15s' }} />
-                        <span className={`w-1.5 h-1.5 rounded-full animate-bounce ${accentText}`} style={{ animationDelay: '0.3s' }} />
-                    </span>
-                )}
-            </div>
-            <div className="p-4 flex-1">
-                {children ?? (
-                    <p className="text-sm text-slate-400 italic py-2">等待回复…</p>
-                )}
-            </div>
-        </div>
-    );
-}
-
-function CompareTurnBlock({ turn, showLoading }: { turn: CompareTurn; showLoading: boolean }) {
-    return (
-        <div className="mb-12">
-            <UserMessageBubble msg={turn.user} />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-                <CompareColumnPanel
-                    title="原生 LLM"
-                    icon={<Activity size={14} />}
-                    accent="blue"
-                    badge="未验证"
-                    showLoading={showLoading && !!turn.llm}
-                >
-                    {turn.llm && <ChatMessage msg={turn.llm} layout="column" hideFooter />}
-                </CompareColumnPanel>
-                <CompareColumnPanel
-                    title="ReAct Agent"
-                    icon={<Brain size={14} />}
-                    accent="emerald"
-                    badge="工具验证"
-                    showLoading={showLoading && !!turn.agent}
-                >
-                    {turn.agent && <ChatMessage msg={turn.agent} layout="column" hideFooter />}
-                </CompareColumnPanel>
-            </div>
-        </div>
-    );
-}
-
-function ChatMessage({
-    msg,
-    layout = 'default',
-    hideFooter = false,
-}: {
-    msg: Message;
-    layout?: 'default' | 'column';
-    hideFooter?: boolean;
-}) {
-    const { t } = useTranslation();
-    const isColumn = layout === 'column';
-    const [copied, setCopied] = useState(false);
-    // Agent 模式默认展开思考过程
-    const [showTrace, setShowTrace] = useState(msg.mode === 'agent');
-
-    const handleCopyContent = async () => {
-        if (!msg.content.trim()) return;
-        try {
-            await copyTextToClipboard(msg.content.trim());
-            setCopied(true);
-            toast.success(t('travel.export.copiedPlan'));
-            setTimeout(() => setCopied(false), 2000);
-        } catch {
-            toast.error(t('travel.export.copyFailed'));
-        }
-    };
-
-    // 辅助函数
-    const getIconForStepType = (type: string) => {
-        switch (type) {
-            case 'Observe': return <Search size={14} />
-            case 'Think': return <Lightbulb size={14} />
-            case 'Act': return <Code2 size={14} />
-            case 'Verify': return <CheckCircle2 size={14} />
-            default: return <Activity size={14} />
-        }
-    }
-
-    const getColorForStepType = (type: string) => {
-        switch (type) {
-            case 'Observe': return 'blue'
-            case 'Think': return 'purple'
-            case 'Act': return 'orange'
-            case 'Verify': return 'green'
-            default: return 'blue'
-        }
-    }
-
-    const getStepLabel = (type: string) => {
-        const labels: Record<string, string> = {
-            'Observe': '观察环境 (Observe)',
-            'Think': '思考决策 (Think)',
-            'Act': '执行动作 (Act)',
-            'Verify': '观察结果 (Verify)'
-        }
-        return labels[type] || type
-    }
-
-    return (
-        <div className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} ${isColumn ? 'mb-0' : 'mb-8'} group`}>
-            {msg.role === 'assistant' && !isColumn && (
-                <div className="w-8 h-8 rounded-full bg-[#3B82F6] flex items-center justify-center text-white mr-4 flex-shrink-0 shadow-sm mt-0.5">
-                    <Brain size={16} />
-                </div>
-            )}
-
-            <div className={`${isColumn ? 'w-full max-w-none' : 'max-w-[80%]'} flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-
-                {/* Agent 思考过程模块 (折叠面板) */}
-                {msg.role === 'assistant' && msg.mode === 'agent' && msg.thinkingSteps && msg.thinkingSteps.length > 0 && (
-                    <div className="mb-3 w-full">
-                        <button
-                            onClick={() => setShowTrace(!showTrace)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-[#1E293B]/50 dark:hover:bg-[#1E293B] text-slate-600 dark:text-slate-300 rounded-full text-xs font-medium transition-colors border border-slate-200 dark:border-slate-700/50"
-                        >
-                            {showTrace ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            <Activity size={14} className="text-[#3B82F6]" />
-                            🧠 思考过程 ({msg.thinkingSteps.length} 步)
-                        </button>
-                        {showTrace && (
-                            <div className="mt-3 mb-4 p-4 bg-slate-50 dark:bg-[#0F172A] border border-slate-200 dark:border-slate-800 rounded-xl text-xs w-full max-h-[60vh] overflow-y-auto scroll-smooth">
-                                <div className="pl-2 relative">
-                                    <div className="absolute left-[19px] top-2 bottom-0 w-[2px] bg-slate-100 dark:bg-slate-800 z-0"></div>
-
-                                    {msg.thinkingSteps.map((step: any, index: number) => (
-                                        <TimelineStep
-                                            key={step.sequence}
-                                            icon={getIconForStepType(step.type)}
-                                            color={getColorForStepType(step.type)}
-                                            label={`${index + 1}. ${getStepLabel(step.type)}`}
-                                            content={
-                                                <div className="w-full">
-                                                    <div className="bg-white dark:bg-[#151E2E] rounded-lg p-3 border border-slate-200 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-300 mb-2 shadow-sm prose prose-sm dark:prose-invert max-w-none">
-                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                            {step.content}
-                                                        </ReactMarkdown>
-                                                    </div>
-
-                                                    {/* 工具调用详情 */}
-                                                    {step.toolCalls && step.toolCalls.length > 0 && (
-                                                        <div className="mt-3 space-y-2">
-                                                            <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
-                                                                🔧 工具调用详情：
-                                                            </div>
-                                                            {step.toolCalls.map((toolCall: any) => (
-                                                                <div
-                                                                    key={toolCall.id}
-                                                                    className="bg-white dark:bg-[#0F172A] rounded-lg p-3 border border-slate-200 dark:border-slate-700 text-xs"
-                                                                >
-                                                                    <div className="flex items-center justify-between mb-2">
-                                                                        <span className="font-mono font-semibold text-[#3B82F6]">
-                                                                            {toolCall.tool_name}
-                                                                        </span>
-                                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                                                            toolCall.status === 'success'
-                                                                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                                                                : toolCall.status === 'error'
-                                                                                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                                                                                : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
-                                                                        }`}>
-                                                                            {toolCall.status === 'success' ? '✅ 成功' :
-                                                                             toolCall.status === 'error' ? '❌ 失败' : '⏳ 执行中'}
-                                                                        </span>
-                                                                    </div>
-
-                                                                    <div className="space-y-1 text-slate-600 dark:text-slate-400">
-                                                                        <div>
-                                                                            <span className="font-semibold">参数：</span>
-                                                                            <code className="ml-1 text-xs bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">
-                                                                                {JSON.stringify(toolCall.tool_args)}
-                                                                            </code>
-                                                                        </div>
-
-                                                                        {toolCall.result && (
-                                                                            <div>
-                                                                                <span className="font-semibold">结果：</span>
-                                                                                <div className="mt-1 text-xs bg-slate-50 dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 max-h-32 overflow-y-auto">
-                                                                                    {toolCall.result}
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-
-                                                                        {toolCall.duration_ms && (
-                                                                            <div className="text-xs text-slate-500">
-                                                                                ⏱️ 耗时：{toolCall.duration_ms}ms
-                                                                            </div>
-                                                                        )}
-
-                                                                        {toolCall.error && (
-                                                                            <div className="text-xs text-red-600 dark:text-red-400">
-                                                                                ⚠️ 错误：{toolCall.error}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            }
-                                            isLast={index === msg.thinkingSteps.length - 1}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* 聊天气泡文本 */}
-                <div className={`text-[15px] leading-relaxed ${msg.role === 'user'
-                        ? 'bg-slate-100 dark:bg-[#2A2B32] text-slate-900 dark:text-slate-100 px-5 py-3.5 rounded-3xl'
-                        : 'text-slate-800 dark:text-slate-200 py-1 prose prose-sm dark:prose-invert max-w-none'
-                    }`}>
-                    {msg.role === 'user' ? (
-                        msg.content.split('\n').map((line: string, i: number) => (
-                            <React.Fragment key={i}>
-                                {line}
-                                {i !== msg.content.split('\n').length - 1 && <div className="h-3"></div>}
-                            </React.Fragment>
-                        ))
-                    ) : (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {msg.content}
-                        </ReactMarkdown>
-                    )}
-                </div>
-
-                {msg.role === 'assistant' && !hideFooter && (
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-400">
-                        {msg.mode === 'agent' ? (
-                            <span className="flex items-center gap-1 text-emerald-500"><CheckCircle2 size={12} /> ReAct Agent 生成，数据已验证</span>
-                        ) : (
-                            <span className="flex items-center gap-1 text-amber-500"><AlertTriangle size={12} /> 原生 LLM 预测，未验证真实性</span>
-                        )}
-                        {msg.content.trim() && (
-                            <button
-                                type="button"
-                                onClick={handleCopyContent}
-                                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-slate-500 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-700 group-hover:opacity-100 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                            >
-                                {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                                {copied ? t('travel.export.copiedPlan') : t('travel.export.copyPlan')}
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-function ReactView({ showToast, selectedModel }: { showToast: (message: string, type?: string) => void; selectedModel?: string }) {
     const { steps, simulationState, errorMessage } = useReactStore();
     const { startTrace } = useReactTrace();
     const [inputText, setInputText] = useState('请帮我规划一个3天的杭州旅行，预算5000元，喜欢自然风光');
@@ -660,37 +141,6 @@ function ReactView({ showToast, selectedModel }: { showToast: (message: string, 
     const toggleJson = (step: string) => {
         setExpandedJson(prev => ({ ...prev, [step]: !prev[step] }));
     };
-
-    // 辅助函数
-    const getIconForStepType = (type: string) => {
-        switch (type) {
-            case 'Observe': return <Search size={14} />
-            case 'Think': return <Lightbulb size={14} />
-            case 'Act': return <Code2 size={14} />
-            case 'Verify': return <CheckCircle2 size={14} />
-            default: return <Activity size={14} />
-        }
-    }
-
-    const getColorForStepType = (type: string) => {
-        switch (type) {
-            case 'Observe': return 'blue'
-            case 'Think': return 'purple'
-            case 'Act': return 'orange'
-            case 'Verify': return 'green'
-            default: return 'blue'
-        }
-    }
-
-    const getStepLabel = (type: string) => {
-        const labels: Record<string, string> = {
-            'Observe': '观察环境 (Observe)',
-            'Think': '思考决策 (Think)',
-            'Act': '执行动作 (Act)',
-            'Verify': '观察结果 (Verify)'
-        }
-        return labels[type] || type
-    }
 
     return (
         <div className="w-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -768,89 +218,7 @@ function ReactView({ showToast, selectedModel }: { showToast: (message: string, 
                         )}
                     </h3>
 
-                    <div className="pl-2 relative max-w-4xl mx-auto">
-                        <div className="absolute left-[19px] top-2 bottom-0 w-[2px] bg-slate-100 dark:bg-slate-800 z-0"></div>
-
-                        {steps.map((step, index) => (
-                            <TimelineStep
-                                key={step.sequence}
-                                icon={getIconForStepType(step.type)}
-                                color={getColorForStepType(step.type)}
-                                label={`${index + 1}. ${getStepLabel(step.type)}`}
-                                content={
-                                    <div className="w-full">
-                                        <div className="bg-slate-50 dark:bg-[#0F172A] rounded-lg p-3 border border-slate-200 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-300 mb-2 shadow-sm prose prose-sm dark:prose-invert max-w-none">
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                {step.content}
-                                            </ReactMarkdown>
-                                        </div>
-
-                                        {/* 工具调用详情 */}
-                                        {step.toolCalls && step.toolCalls.length > 0 && (
-                                            <div className="mt-3 space-y-2">
-                                                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
-                                                    🔧 工具调用详情：
-                                                </div>
-                                                {step.toolCalls.map((toolCall) => (
-                                                    <div
-                                                        key={toolCall.id}
-                                                        className="bg-white dark:bg-[#0F172A] rounded-lg p-3 border border-slate-200 dark:border-slate-700 text-xs"
-                                                    >
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <span className="font-mono font-semibold text-[#3B82F6]">
-                                                                {toolCall.tool_name}
-                                                            </span>
-                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                                                toolCall.status === 'success'
-                                                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                                                    : toolCall.status === 'error'
-                                                                    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                                                                    : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
-                                                            }`}>
-                                                                {toolCall.status === 'success' ? '✅ 成功' :
-                                                                 toolCall.status === 'error' ? '❌ 失败' : '⏳ 执行中'}
-                                                            </span>
-                                                        </div>
-
-                                                        <div className="space-y-1 text-slate-600 dark:text-slate-400">
-                                                            <div>
-                                                                <span className="font-semibold">参数：</span>
-                                                                <code className="ml-1 text-xs bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">
-                                                                    {JSON.stringify(toolCall.tool_args)}
-                                                                </code>
-                                                            </div>
-
-                                                            {toolCall.result && (
-                                                                <div>
-                                                                    <span className="font-semibold">结果：</span>
-                                                                    <div className="mt-1 text-xs bg-slate-50 dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 max-h-32 overflow-y-auto">
-                                                                        {toolCall.result}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {toolCall.duration_ms && (
-                                                                <div className="text-xs text-slate-500">
-                                                                    ⏱️ 耗时：{toolCall.duration_ms}ms
-                                                                </div>
-                                                            )}
-
-                                                            {toolCall.error && (
-                                                                <div className="text-xs text-red-600 dark:text-red-400">
-                                                                    ⚠️ 错误：{toolCall.error}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                }
-                                isLast={index === steps.length - 1}
-                            />
-                        ))}
-                    </div>
+                    <ReActTimeline steps={steps} isDarkMode={isDarkMode} className="max-w-4xl mx-auto" />
                 </div>
             )}
 
@@ -1300,34 +668,6 @@ function SettingsView({ showToast, onOpenModelSettings }: { showToast: (message:
 }
 
 /* ================= 辅助组件 ================= */
-
-// 时间线步骤组件
-function TimelineStep({ icon, color, label, content, isLast }: {
-    icon: React.ReactNode;
-    color: string;
-    label: string;
-    content: React.ReactNode;
-    isLast: boolean;
-}) {
-    const colorMap: Record<string, string> = {
-        blue: 'bg-blue-500',
-        purple: 'bg-purple-500',
-        orange: 'bg-orange-500',
-        green: 'bg-emerald-500'
-    };
-
-    return (
-        <div className={`relative pl-8 ${isLast ? '' : 'pb-8'}`}>
-            <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full ${colorMap[color] || 'bg-blue-500'} flex items-center justify-center text-white shadow-sm ring-4 ring-white dark:ring-[#151E2E] z-10`}>
-                {icon}
-            </div>
-            <div className="mb-2">
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{label}</span>
-            </div>
-            <div>{content}</div>
-        </div>
-    );
-}
 
 // Toast 通知组件
 function Toast({ message, type, onClose }: {

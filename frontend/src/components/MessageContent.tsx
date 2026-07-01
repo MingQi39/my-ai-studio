@@ -61,14 +61,15 @@ export function MessageContent({
                 remarkPlugins={[remarkGfm]}
                 components={{
                     // Custom code block rendering with syntax highlighting
-                    code({ node, inline, className, children, ...props }) {
+                    code({ className, children, ...props }) {
                         const match = /language-(\w+)/.exec(className || '');
                         const code = String(children).replace(/\n$/, '');
                         const language = match ? match[1] : 'text';
                         const codeId = `${language}-${code.substring(0, 20)}`;
                         const isCopied = copiedCode === codeId;
+                        const isInline = !match;
 
-                        if (!inline && match) {
+                        if (!isInline && match) {
                             return (
                                 <div style={{ position: 'relative', marginTop: '1rem', marginBottom: '1rem' }}>
                                     {/* Language label and copy button */}

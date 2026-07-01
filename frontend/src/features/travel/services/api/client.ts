@@ -1,28 +1,13 @@
 /**
- * Travel feature HTTP client — uses main studio auth + /api/v1/travel prefix.
+ * Travel feature HTTP client — uses main studio auth + /api/v1 base URL.
  */
 
-import { getToken } from '@/services/api';
-
-const getApiBaseUrl = (): string => {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '');
-  }
-  const hostname = window.location.hostname;
-  return `http://${hostname}:10011/api/v1`;
-};
+import { getApiBaseUrl, getJsonAuthHeaders, getToken } from '@/services/api';
 
 export const TRAVEL_API_BASE = getApiBaseUrl();
 
 export function travelHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  const token = getToken();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  return headers;
+  return getJsonAuthHeaders();
 }
 
 export async function fetchTravelJSON<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -49,8 +34,11 @@ export async function fetchTravelJSON<T>(endpoint: string, options?: RequestInit
 }
 
 export async function fetchTravelBlob(endpoint: string, options?: RequestInit): Promise<Blob> {
-  const headers = { ...travelHeaders() };
-  delete headers['Content-Type'];
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   const response = await fetch(`${TRAVEL_API_BASE}${endpoint}`, {
     ...options,

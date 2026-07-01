@@ -28,6 +28,10 @@ export function useTravelSessionRestore() {
       return;
     }
 
+    if (useChatStore.getState().isGenerating) {
+      return;
+    }
+
     if (restoredRef.current === currentSessionId) {
       return;
     }

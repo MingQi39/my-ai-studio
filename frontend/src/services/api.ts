@@ -4,15 +4,16 @@
  * 提供与后端 API 交互的函数
  */
 
+import { SSEClient } from '@/lib/sseClient';
+
 // API 基础配置 - 根据当前访问地址自动适配后端地址
-const getApiBaseUrl = () => {
+export function getApiBaseUrl(): string {
   if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
+    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '');
   }
-  // 根据当前访问的 hostname 构建后端地址
   const hostname = window.location.hostname;
   return `http://${hostname}:10011/api/v1`;
-};
+}
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -23,6 +24,17 @@ const USER_KEY = 'auth_user';
 export const getToken = (): string | null => {
   return localStorage.getItem(TOKEN_KEY);
 };
+
+export function getJsonAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const token = getToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 export const setToken = (token: string): void => {
   localStorage.setItem(TOKEN_KEY, token);
@@ -138,20 +150,11 @@ async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  const token = getToken();
-
-  const defaultHeaders: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  if (token) {
-    (defaultHeaders as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-  }
 
   const response = await fetch(url, {
     ...options,
     headers: {
-      ...defaultHeaders,
+      ...getJsonAuthHeaders(),
       ...options.headers,
     },
   });
@@ -519,8 +522,64 @@ export interface ChatStreamChunk {
 }
 
 /**
+ * 流式聊天 (SSE) — 返回 promise 与 cancel，便于 UI 停止生成。
+ */
+export function startStreamChat(
+  request: ChatRequest,
+  onChunk: (chunk: ChatStreamChunk) => void,
+  onError?: (error: Error) => void,
+  onComplete?: () => void,
+): { promise: Promise<void>; cancel: () => void } {
+  let finished = false;
+  let client: SSEClient<ChatStreamChunk>;
+
+  const finish = (callback?: () => void) => {
+    if (finished) return;
+    finished = true;
+    callback?.();
+  };
+
+  client = new SSEClient<ChatStreamChunk>({
+    url: `${API_BASE_URL}/chat/stream`,
+    headers: getJsonAuthHeaders(),
+    body: JSON.stringify(request),
+    onEvent: (chunk) => {
+      onChunk(chunk);
+
+      if (chunk.type === 'done') {
+        finish(onComplete);
+        client.cancel();
+        return;
+      }
+
+      if (chunk.type === 'error') {
+        finish(() => onError?.(new Error(chunk.message || chunk.error || 'Unknown error')));
+        client.cancel();
+      }
+    },
+    onError: (error) => {
+      finish(() => onError?.(error));
+    },
+    onComplete: () => {
+      finish(onComplete);
+    },
+  });
+
+  const promise = client.start().catch((error) => {
+    finish(() => onError?.(error instanceof Error ? error : new Error(String(error))));
+  });
+
+  return {
+    promise,
+    cancel: () => {
+      client.cancel();
+      finish();
+    },
+  };
+}
+
+/**
  * 流式聊天 (SSE)
- * 返回一个 ReadableStream，可以逐块读取响应
  */
 export async function streamChat(
   request: ChatRequest,
@@ -528,80 +587,8 @@ export async function streamChat(
   onError?: (error: Error) => void,
   onComplete?: () => void
 ): Promise<void> {
-  const url = `${API_BASE_URL}/chat/stream`;
-  const token = getToken();
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      let detail: string | undefined;
-      try {
-        const errorData = await response.json();
-        detail = errorData.detail || errorData.message;
-      } catch {
-        // 忽略 JSON 解析错误
-      }
-      throw new ApiError(response.status, response.statusText, detail);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // 处理 SSE 格式的数据
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // 保留最后一个不完整的行
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-          if (data) {
-            try {
-              const chunk = JSON.parse(data) as ChatStreamChunk;
-              onChunk(chunk);
-
-              if (chunk.type === 'done') {
-                onComplete?.();
-                return;
-              }
-
-              if (chunk.type === 'error') {
-                onError?.(new Error(chunk.message || chunk.error || 'Unknown error'));
-                return;
-              }
-            } catch (e) {
-              console.error('Failed to parse SSE chunk:', e, data);
-            }
-          }
-        }
-      }
-    }
-
-    onComplete?.();
-  } catch (error) {
-    onError?.(error instanceof Error ? error : new Error(String(error)));
-  }
+  const { promise } = startStreamChat(request, onChunk, onError, onComplete);
+  await promise;
 }
 
 /**

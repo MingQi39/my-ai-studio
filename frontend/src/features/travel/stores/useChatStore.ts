@@ -5,25 +5,10 @@
 
 import { create } from 'zustand'
 
+import type { ReActStep } from '@/features/travel/types/react'
 import type { TravelPlanGenerateResponse } from '@/features/travel/types/itinerary'
 
-export interface ToolCall {
-  id: string
-  tool_name: string
-  tool_args: Record<string, any>
-  result?: string
-  status?: 'pending' | 'success' | 'error'
-  duration_ms?: number
-  error?: string
-}
-
-export interface ReActStep {
-  type: 'Observe' | 'Think' | 'Act' | 'Verify'
-  content: string
-  round: number
-  sequence: number
-  toolCalls?: ToolCall[]
-}
+export type { ReActStep, ToolCall } from '@/features/travel/types/react'
 
 export interface Message {
   id: string
