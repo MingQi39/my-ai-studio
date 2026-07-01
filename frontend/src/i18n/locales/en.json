@@ -114,7 +114,10 @@
     "promptHint": "Enter your question in the box below",
     "messages": "{{count}} messages",
     "modelSwitched": "Switched to {{name}}",
-    "modelSwitchFailed": "Failed to switch model"
+    "modelSwitchFailed": "Failed to switch model",
+    "activeModelLabel": "Model",
+    "noModel": "No model configured",
+    "changeModel": "Click to switch or configure model"
   },
   "launchpad": {
     "title": "Start building with AI",

@@ -28,6 +28,7 @@ import { useReactTrace } from '@/features/travel/hooks/useReactTrace';
 import { fetchToolsList, testTool, type Tool } from '@/features/travel/services/api/tools';
 import { fetchTravelSettings, updateTravelSettings, type TravelSettings } from '@/features/travel/services/api/settings';
 import { BrandLogo } from '@/components/BrandLogo';
+import { ActiveModelBadge } from '@/components/ActiveModelBadge';
 import { branding } from '@/features/travel/config/branding';
 import { PlanExportToolbar } from '@/features/travel/components/PlanExportToolbar';
 import { copyTextToClipboard } from '@/features/travel/utils/exportPlan';
@@ -90,13 +91,11 @@ export function TravelWorkspace({
                     </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                        type="button"
+                    <ActiveModelBadge
+                        model={selectedModel}
                         onClick={onOpenModelSettings}
-                        className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono border border-[var(--border-color)] bg-[var(--bg-hover)] hover:border-blue-500/40 transition-colors max-w-[200px]"
-                    >
-                        <span className="truncate">{selectedModel || t('travel.panel.noModel')}</span>
-                    </button>
+                        className="hidden sm:inline-flex"
+                    />
                     <Button variant="ghost" size="icon" onClick={toggleControlPanel} className="h-9 w-9">
                         <PanelRight size={18} className={isControlPanelOpen ? 'text-blue-500' : ''} />
                     </Button>
@@ -105,7 +104,7 @@ export function TravelWorkspace({
 
             <main className="flex-1 min-h-0 overflow-hidden">
                 {activeTab === 'chat' ? (
-                    <ChatView onOpenModelSettings={onOpenModelSettings} />
+                    <ChatView onOpenModelSettings={onOpenModelSettings} selectedModel={selectedModel} />
                 ) : (
                     <div className="h-full overflow-y-auto p-6 custom-scrollbar">
                         <div className="max-w-6xl mx-auto w-full">
@@ -124,7 +123,7 @@ export function TravelWorkspace({
 
 /* ================= 页面视图组件 ================= */
 
-function ChatView({ onOpenModelSettings }: { onOpenModelSettings?: () => void }) {
+function ChatView({ onOpenModelSettings, selectedModel = '' }: { onOpenModelSettings?: () => void; selectedModel?: string }) {
     const { t } = useTranslation();
     const { messages, isGenerating, isLoadingHistory, chatMode, setChatMode } = useChatStore();
     useTravelSessionRoute();
@@ -300,12 +299,12 @@ function ChatView({ onOpenModelSettings }: { onOpenModelSettings?: () => void })
                             </button>
                         )}
                         {onOpenModelSettings && (
-                            <button
+                            <ActiveModelBadge
+                                model={selectedModel}
                                 onClick={onOpenModelSettings}
-                                className="ml-auto text-[11px] font-medium text-[#3B82F6] hover:underline"
-                            >
-                                模型连接设置 →
-                            </button>
+                                variant="compact"
+                                className="ml-auto max-w-[180px] sm:max-w-[220px]"
+                            />
                         )}
                     </div>
 

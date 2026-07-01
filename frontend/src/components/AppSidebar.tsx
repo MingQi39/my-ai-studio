@@ -108,24 +108,6 @@ export function AppSidebar({
     }
   }, [activeTab, isTravelHistoryOpen, sessionRefreshTrigger, travelSessionListVersion]);
 
-  // 定期刷新会话列表
-  useEffect(() => {
-    if (activeTab === 'travel-agent') {
-      const interval = setInterval(() => {
-        if (isTravelHistoryOpen) {
-          loadTravelSessions();
-        }
-      }, 5000);
-      return () => clearInterval(interval);
-    }
-    const interval = setInterval(() => {
-      if (isHistoryOpen) {
-        loadSessions();
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [isHistoryOpen, isTravelHistoryOpen, activeTab]);
-
   const handleLogout = () => {
     if (onLogout) {
       onLogout();
@@ -223,20 +205,10 @@ export function AppSidebar({
               </p>
 
               <NavButton
-                icon={<MessageSquare size={20} />}
-                label={t('travel.sidebar.chat')}
-                id="travel-chat"
-                isActive={travelSubTab === 'chat'}
-                onClick={() => {
-                  const id = useChatStore.getState().currentSessionId;
-                  navigate(id ? `/travel/chat/${id}` : '/travel/chat');
-                }}
-              />
-              <NavButton
                 icon={<Plus size={20} />}
                 label={t('travel.sidebar.newChat')}
                 id="travel-new-chat"
-                isActive={false}
+                isActive={travelSubTab === 'chat' && !travelSessionId}
                 onClick={() => handleNewTravelSession()}
               />
 
@@ -245,7 +217,15 @@ export function AppSidebar({
                   <CollapsibleTrigger asChild>
                     <button
                       type="button"
-                      className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                      onClick={() => {
+                        const id = useChatStore.getState().currentSessionId;
+                        navigate(id ? `/travel/chat/${id}` : '/travel/chat');
+                      }}
+                      className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                        travelSubTab === 'chat' && travelSessionId
+                          ? 'text-blue-500'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
                     >
                       <ChevronDown
                         size={12}

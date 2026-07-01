@@ -28,6 +28,7 @@ import {
 
 import { BrandLogo } from '@/components/BrandLogo';
 import { ToolToggle, type ChatToolsState, CHAT_TOOLS_AVAILABLE } from '@/components/ControlPanel';
+import { ActiveModelBadge } from '@/components/ActiveModelBadge';
 
 // Types for our Messages
 type ChatToolRun = {
@@ -115,7 +116,6 @@ export function MainWorkspace({
    const [isGenerating, setIsGenerating] = useState(false);
    const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
    const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
-   const activeModel = selectedModel || 'DeepSeek-R1';
 
    // Session State
    const [sessions, setSessions] = useState<SessionResponse[]>([]);
@@ -600,7 +600,12 @@ export function MainWorkspace({
                   ) : null;
                })()}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
+               <ActiveModelBadge
+                  model={selectedModel}
+                  onClick={() => onOpenConnectionModal()}
+                  className="hidden md:inline-flex"
+               />
                <Button
                   variant="ghost"
                   size="icon"
@@ -788,7 +793,13 @@ export function MainWorkspace({
                   <div className="flex items-center justify-between px-2 pb-1">
 
                      {/* Left Controls */}
-                     <div className="flex items-center gap-1">
+                     <div className="flex items-center gap-2 min-w-0">
+                        <ActiveModelBadge
+                           model={selectedModel}
+                           onClick={() => onOpenConnectionModal()}
+                           variant="compact"
+                           className="max-w-[180px] sm:max-w-[220px]"
+                        />
                         <div ref={toolsMenuRef} className="relative">
                            <Button
                               type="button"

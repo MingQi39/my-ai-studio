@@ -114,7 +114,10 @@
     "promptHint": "在下方输入框中输入您的问题",
     "messages": "{{count}} 条消息",
     "modelSwitched": "已切换到 {{name}}",
-    "modelSwitchFailed": "切换模型失败"
+    "modelSwitchFailed": "切换模型失败",
+    "activeModelLabel": "模型",
+    "noModel": "未配置模型",
+    "changeModel": "点击切换或配置模型"
   },
   "launchpad": {
     "title": "开始构建您的 AI 应用",
