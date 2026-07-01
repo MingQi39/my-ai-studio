@@ -1241,7 +1241,7 @@ function SettingsView({ showToast, onOpenModelSettings }: { showToast: (message:
                         <Brain size={16} className="text-[#3B82F6]" /> 模型连接
                     </h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                        旅行 Agent 复用 My AI Studio 的模型配置（BYOK），与主聊天工作台共用同一套 API Key。
+                        旅行 Agent 复用 Qi 的 AI Studio 的模型配置（BYOK），与主聊天工作台共用同一套 API Key。
                     </p>
                     {onOpenModelSettings && (
                         <button

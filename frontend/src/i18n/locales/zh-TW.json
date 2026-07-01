@@ -14,8 +14,8 @@
     "today": "今天",
     "yesterday": "昨天",
     "daysAgo": "{{count}}天前",
-    "appName": "My AI Studio",
-    "appOwner": "My Studio"
+    "appName": "Qi 的 AI Studio",
+    "appOwner": "Qi 的工作室"
   },
   "language": {
     "label": "語言",

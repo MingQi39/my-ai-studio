@@ -1,6 +1,8 @@
 import pytest
 
 from app.travel.services.plan_pdf_service import (
+    _collect_table_block,
+    _parse_table_alignments,
     render_markdown_pdf,
     sanitize_pdf_filename,
     _format_inline_text,
@@ -33,6 +35,23 @@ def test_format_inline_text():
     assert _format_inline_text("**目的地**：成都") == "目的地：成都"
     assert _format_inline_text("[高德导航](https://example.com)") == "高德导航"
     assert _format_inline_text("📍 春熙路") == "地点： 春熙路"
+
+
+def test_parse_table_alignments():
+    assert _parse_table_alignments("| --- | ---: | :---: |") == ["L", "R", "C"]
+
+
+def test_collect_table_block():
+    lines = [
+        "| 类别 | 金额 | 说明 |",
+        "| --- | ---: | --- |",
+        "| 餐饮 | 1200 CNY | 火锅 |",
+    ]
+    header, alignments, rows, next_index = _collect_table_block(lines, 0)
+    assert header == ["类别", "金额", "说明"]
+    assert alignments == ["L", "R", "L"]
+    assert rows == [["餐饮", "1200 CNY", "火锅"]]
+    assert next_index == 3
 
 
 def test_render_markdown_pdf_produces_bytes():

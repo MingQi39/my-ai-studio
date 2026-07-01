@@ -70,7 +70,7 @@ tags_metadata = [
 
 # 创建 FastAPI 应用
 app = FastAPI(
-    title="MyAI Studio API",
+    title="Qi AI Studio API",
     description="通用大模型接入平台后端服务 - 支持多模型适配、流式响应、批处理任务等功能",
     version=settings.APP_VERSION,
     docs_url="/docs",

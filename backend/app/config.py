@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     )
 
     # Application
-    APP_NAME: str = "MyAI Studio"
+    APP_NAME: str = "Qi AI Studio"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     ENVIRONMENT: Literal["development", "staging", "production"] = "development"

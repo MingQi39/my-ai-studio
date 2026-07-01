@@ -1,7 +1,7 @@
 
-  # MyAI Studio
+  # Qi AI Studio
 
-  This is a code bundle for MyAI Studio. The original project is available at https://www.figma.com/design/V3qhIG5MpYSgkEq0XxJrbE/LLM-Orchestration-IDE-Design.
+  This is a code bundle for Qi AI Studio. The original project is available at https://www.figma.com/design/V3qhIG5MpYSgkEq0XxJrbE/LLM-Orchestration-IDE-Design.
 
   ## Running the code
 

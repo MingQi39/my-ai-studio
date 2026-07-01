@@ -120,7 +120,7 @@ export function buildIcsCalendar(plan: StructuredTravelPlan): string {
 
       events.push([
         'BEGIN:VEVENT',
-        `UID:${sanitizeFilename(plan.title)}-d${day.day}-a${index}@my-ai-studio`,
+        `UID:${sanitizeFilename(plan.title)}-d${day.day}-a${index}@qi-ai-studio`,
         `DTSTAMP:${formatIcsDate(now)}`,
         `DTSTART:${formatIcsDate(start)}`,
         `DTEND:${formatIcsDate(end)}`,
@@ -135,7 +135,7 @@ export function buildIcsCalendar(plan: StructuredTravelPlan): string {
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//My AI Studio//Travel Plan//CN',
+    'PRODID:-//Qi AI Studio//Travel Plan//CN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     ...events,

@@ -1,1 +1,1 @@
-"""MyAI Studio Backend Application."""
+"""Qi AI Studio Backend Application."""

@@ -14,8 +14,8 @@
     "today": "Hoy",
     "yesterday": "Ayer",
     "daysAgo": "hace {{count}}d",
-    "appName": "My AI Studio",
-    "appOwner": "My Studio"
+    "appName": "Qi's AI Studio",
+    "appOwner": "Qi's Studio"
   },
   "language": {
     "label": "Idioma",

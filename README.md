@@ -1,4 +1,4 @@
-# My AI Studio
+# Qi 的 AI Studio
 
 全栈 AI 聊天工作台：多 Provider LLM 接入、流式对话、会话历史、系统提示词，以及支持 **9 语言 i18n** 的 React 界面（默认英文）。
 

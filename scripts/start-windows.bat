@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo   MyAI Studio - 一键启动脚本
+echo   Qi AI Studio - 一键启动脚本
 echo ============================================
 echo.
 
@@ -118,7 +118,7 @@ echo ============================================
 echo.
 
 :: 使用 start 命令在新窗口中启动后端
-start "MyAI Backend" cmd /k "cd /d %~dp0\..\backend && .venv\Scripts\activate.bat && python run.py"
+start "Qi Backend" cmd /k "cd /d %~dp0\..\backend && .venv\Scripts\activate.bat && python run.py"
 
 :: 等待后端启动
 echo [信息] 等待后端启动...

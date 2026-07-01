@@ -1,5 +1,5 @@
 import { cn } from '@/components/ui/utils';
-import mingLogo from '@/assets/ming-logo.png';
+import qiLogo from '@/assets/qi-logo.png';
 
 type BrandLogoProps = {
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -14,12 +14,12 @@ const sizeClass: Record<NonNullable<BrandLogoProps['size']>, string> = {
   xl: 'w-[72px] h-[72px] rounded-xl',
 };
 
-export function BrandLogo({ size = 'sm', className, alt = 'Ming' }: BrandLogoProps) {
+export function BrandLogo({ size = 'sm', className, alt = 'Qi' }: BrandLogoProps) {
   return (
     <img
-      src={mingLogo}
+      src={qiLogo}
       alt={alt}
-      className={cn(sizeClass[size], 'object-cover shadow-sm', className)}
+      className={cn(sizeClass[size], 'object-contain', className)}
     />
   );
 }

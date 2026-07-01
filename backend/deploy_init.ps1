@@ -2,7 +2,7 @@
 # 一键部署脚本 (Windows PowerShell)
 
 Write-Host "=====================================" -ForegroundColor Cyan
-Write-Host "  我的 AI Studio - 首次部署向导" -ForegroundColor Cyan
+Write-Host "  Qi 的 AI Studio - 首次部署向导" -ForegroundColor Cyan
 Write-Host "=====================================" -ForegroundColor Cyan
 Write-Host ""
 
