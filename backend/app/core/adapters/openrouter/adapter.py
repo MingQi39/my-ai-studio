@@ -16,6 +16,7 @@ from ..types import (
     ModelInfo,
     ChatCompletionResponse,
 )
+from ..message_utils import sanitize_messages_for_api
 from ...exceptions import (
     LLMException,
     AuthenticationError,
@@ -171,7 +172,7 @@ class OpenRouterAdapter(BaseLLMAdapter):
         """构建请求参数"""
         params: dict[str, Any] = {
             "model": self.model_id,
-            "messages": [dict(msg) for msg in messages],
+            "messages": self._sanitize_messages(messages),
             "temperature": temperature,
             "stream": stream,
         }
@@ -181,12 +182,17 @@ class OpenRouterAdapter(BaseLLMAdapter):
             params["top_p"] = top_p
         if tools:
             params["tools"] = tools
+            params["tool_choice"] = "auto"
+
+        response_format = kwargs.get("response_format")
+        if response_format:
+            params["response_format"] = response_format
 
         extra_body: dict[str, Any] = {}
 
-        # 推理模式
+        # 推理模式（与 tools 同时开启时部分模型会报错）
         enable_reasoning = kwargs.get("enable_reasoning", self.enable_reasoning)
-        if enable_reasoning:
+        if enable_reasoning and not tools:
             extra_body["reasoning"] = {"enabled": True}
 
         # 输出模态（图像生成）
@@ -198,6 +204,10 @@ class OpenRouterAdapter(BaseLLMAdapter):
             params["extra_body"] = extra_body
 
         return params
+
+    @staticmethod
+    def _sanitize_messages(messages: list[ChatMessage]) -> list[dict]:
+        return sanitize_messages_for_api(messages)
 
     async def _handle_stream_response(
         self, response: Any

@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { AppSidebar } from './components/AppSidebar';
 import { MainWorkspace } from './components/MainWorkspace';
-import { ControlPanel } from './components/ControlPanel';
+import { ControlPanel, DEFAULT_CHAT_TOOLS_STATE, type ChatToolsState } from './components/ControlPanel';
 import { ConnectionModal } from './components/ConnectionModal';
 import { AuthPage } from './components/AuthPage';
+import { TravelPage } from './pages/TravelPage';
+import { branding } from './features/travel/config/branding';
+import { useSessionRoute } from './hooks/useSessionRoute';
+
 import {
   User,
   getToken,
@@ -14,6 +19,7 @@ import {
   listModelConfigs,
   ModelConfigResponse,
   SystemInstructionResponse,
+  ApiError,
 } from './services/api';
 
 function configMatchesProvider(config: ModelConfigResponse, providerId: string): boolean {
@@ -21,12 +27,78 @@ function configMatchesProvider(config: ModelConfigResponse, providerId: string):
   return config.adapter_type === providerId;
 }
 
+function MainChatRoute({
+  isSidebarOpen,
+  toggleSidebar,
+  isDarkMode,
+  hasModelConfig,
+  onOpenConnectionModal,
+  onSelectProviderModel,
+  enableReasoning,
+  sessionRefreshTrigger,
+  onSessionsChange,
+  systemPrompt,
+  modelConfigId,
+  selectedModel,
+  isControlPanelOpen,
+  toggleControlPanel,
+  toolsState,
+  onToolsStateChange,
+}: {
+  isSidebarOpen: boolean;
+  toggleSidebar: () => void;
+  isDarkMode: boolean;
+  hasModelConfig: boolean | null;
+  onOpenConnectionModal: (selectedProviderId?: string) => void;
+  onSelectProviderModel: (providerId: string, displayName: string) => void;
+  enableReasoning: boolean;
+  sessionRefreshTrigger: number;
+  onSessionsChange: () => void;
+  systemPrompt: string;
+  modelConfigId: string | null;
+  selectedModel: string;
+  isControlPanelOpen: boolean;
+  toggleControlPanel: () => void;
+  toolsState: ChatToolsState;
+  onToolsStateChange: (state: ChatToolsState) => void;
+}) {
+  const { currentSessionId, setCurrentSessionId } = useSessionRoute();
+
+  return (
+    <MainWorkspace
+      isSidebarOpen={isSidebarOpen}
+      toggleSidebar={toggleSidebar}
+      isDarkMode={isDarkMode}
+      hasModelConfig={hasModelConfig}
+      onOpenConnectionModal={onOpenConnectionModal}
+      onSelectProviderModel={onSelectProviderModel}
+      enableReasoning={enableReasoning}
+      currentSessionId={currentSessionId}
+      onSessionChange={setCurrentSessionId}
+      sessionRefreshTrigger={sessionRefreshTrigger}
+      onSessionsChange={onSessionsChange}
+      systemPrompt={systemPrompt}
+      modelConfigId={modelConfigId}
+      selectedModel={selectedModel}
+      isControlPanelOpen={isControlPanelOpen}
+      toggleControlPanel={toggleControlPanel}
+      toolsState={toolsState}
+      onToolsStateChange={onToolsStateChange}
+    />
+  );
+}
+
 export default function App() {
   const { t, i18n } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const isTravelRoute = location.pathname.startsWith('/travel');
+  const activeTab = isTravelRoute ? 'travel-agent' : 'history';
 
   useEffect(() => {
-    document.title = t('common.appName');
-  }, [t, i18n.language]);
+    document.title = isTravelRoute ? branding.documentTitle : t('common.appName');
+  }, [t, i18n.language, isTravelRoute]);
 
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
@@ -39,18 +111,18 @@ export default function App() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState('history');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [enableReasoning, setEnableReasoning] = useState(true);
+  const [toolsState, setToolsState] = useState<ChatToolsState>(DEFAULT_CHAT_TOOLS_STATE);
 
   const [modelConfigs, setModelConfigs] = useState<ModelConfigResponse[]>([]);
   const [hasModelConfig, setHasModelConfig] = useState<boolean | null>(null);
 
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [sessionRefreshTrigger, setSessionRefreshTrigger] = useState(0);
-
   const [currentInstruction, setCurrentInstruction] = useState<SystemInstructionResponse | null>(null);
   const [tempSystemPrompt, setTempSystemPrompt] = useState('');
+  const [sessionRefreshTrigger, setSessionRefreshTrigger] = useState(0);
+
+  const currentSessionId = location.pathname.match(/^\/session\/([^/]+)/)?.[1] ?? null;
 
   const loadModelConfigs = useCallback(async (autoSelect: boolean = true) => {
     try {
@@ -69,10 +141,21 @@ export default function App() {
       return sortedConfigs;
     } catch (error) {
       console.error('Failed to load model configs:', error);
+      if (error instanceof ApiError && error.status === 401) {
+        logout();
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+        setSelectedModel('');
+        setSelectedModelConfigId(null);
+        setModelConfigs([]);
+        setHasModelConfig(null);
+        toast.error(t('auth.sessionExpired'));
+        return [];
+      }
       setHasModelConfig(false);
       return [];
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const token = getToken();
@@ -147,13 +230,17 @@ export default function App() {
       setIsConnectionModalOpen(true);
     } else if (tab === 'logout') {
       handleLogout();
-    } else {
-      setActiveTab(tab);
+    } else if (tab === 'travel-agent') {
+      navigate('/travel/chat');
+      setIsControlPanelOpen(true);
+    } else if (tab === 'history') {
+      navigate('/');
+      setIsControlPanelOpen(true);
     }
   };
 
   const handleSelectSession = (sessionId: string) => {
-    setCurrentSessionId(sessionId);
+    navigate(`/session/${sessionId}`);
   };
 
   const refreshSessions = useCallback(() => {
@@ -281,27 +368,73 @@ export default function App() {
         />
       </div>
 
-      <MainWorkspace
-        isSidebarOpen={isSidebarOpen}
-        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        isDarkMode={isDarkMode}
-        hasModelConfig={hasModelConfig}
-        onOpenConnectionModal={openConnectionModal}
-        onSelectProviderModel={handleSelectProviderModel}
-        enableReasoning={enableReasoning}
-        currentSessionId={currentSessionId}
-        onSessionChange={setCurrentSessionId}
-        sessionRefreshTrigger={sessionRefreshTrigger}
-        onSessionsChange={refreshSessions}
-        systemPrompt={currentInstruction?.content || tempSystemPrompt}
-        modelConfigId={selectedModelConfigId}
-        selectedModel={selectedModel}
-        isControlPanelOpen={isControlPanelOpen}
-        toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
-      />
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <MainChatRoute
+              isSidebarOpen={isSidebarOpen}
+              toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              isDarkMode={isDarkMode}
+              hasModelConfig={hasModelConfig}
+              onOpenConnectionModal={openConnectionModal}
+              onSelectProviderModel={handleSelectProviderModel}
+              enableReasoning={enableReasoning}
+              sessionRefreshTrigger={sessionRefreshTrigger}
+              onSessionsChange={refreshSessions}
+              systemPrompt={currentInstruction?.content || tempSystemPrompt}
+              modelConfigId={selectedModelConfigId}
+              selectedModel={selectedModel}
+              isControlPanelOpen={isControlPanelOpen}
+              toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
+              toolsState={toolsState}
+              onToolsStateChange={setToolsState}
+            />
+          }
+        />
+        <Route
+          path="/session/:sessionId"
+          element={
+            <MainChatRoute
+              isSidebarOpen={isSidebarOpen}
+              toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              isDarkMode={isDarkMode}
+              hasModelConfig={hasModelConfig}
+              onOpenConnectionModal={openConnectionModal}
+              onSelectProviderModel={handleSelectProviderModel}
+              enableReasoning={enableReasoning}
+              sessionRefreshTrigger={sessionRefreshTrigger}
+              onSessionsChange={refreshSessions}
+              systemPrompt={currentInstruction?.content || tempSystemPrompt}
+              modelConfigId={selectedModelConfigId}
+              selectedModel={selectedModel}
+              isControlPanelOpen={isControlPanelOpen}
+              toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
+              toolsState={toolsState}
+              onToolsStateChange={setToolsState}
+            />
+          }
+        />
+        <Route
+          path="/travel/*"
+          element={
+            <TravelPage
+              isDarkMode={isDarkMode}
+              isSidebarOpen={isSidebarOpen}
+              toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              selectedModel={selectedModel}
+              selectedModelConfigId={selectedModelConfigId}
+              isControlPanelOpen={isControlPanelOpen}
+              toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
+              onOpenModelSettings={() => setIsConnectionModalOpen(true)}
+            />
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
 
       <div
-        className={`transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${isControlPanelOpen ? 'w-[300px] opacity-100' : 'w-0 opacity-0'}`}
+        className={`transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${isControlPanelOpen && activeTab === 'history' ? 'w-[300px] opacity-100' : 'w-0 opacity-0'}`}
       >
         <ControlPanel
           onModelClick={() => setIsConnectionModalOpen(true)}
@@ -315,6 +448,8 @@ export default function App() {
           onTempSystemPromptChange={setTempSystemPrompt}
           isOpen={isControlPanelOpen}
           togglePanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
+          toolsState={toolsState}
+          onToolsStateChange={setToolsState}
         />
       </div>
 

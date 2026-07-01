@@ -16,6 +16,7 @@ from ..types import (
     ModelInfo,
     ChatCompletionResponse,
 )
+from ..message_utils import sanitize_messages_for_api
 from ...exceptions import (
     LLMException,
     AuthenticationError,
@@ -105,11 +106,15 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
             params["top_p"] = top_p
         if tools:
             params["tools"] = tools
+            params["tool_choice"] = "auto"
+        response_format = kwargs.get("response_format")
+        if response_format:
+            params["response_format"] = response_format
         return params
 
     def _convert_messages(self, messages: list[ChatMessage]) -> list[dict]:
         """转换消息格式为 OpenAI 格式，子类可覆写"""
-        converted = [dict(msg) for msg in messages]
+        converted = sanitize_messages_for_api(messages)
         # 调试日志:打印发送给API的消息
         print(f"\n{'='*80}\nDEBUG: Messages sent to API:\n", flush=True)
         for i, msg in enumerate(converted):
@@ -211,21 +216,31 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
             return AuthenticationError(provider=self.PROVIDER)
 
         if isinstance(error, APIError):
-            status_code = getattr(error, 'status_code', 500)
+            status_code = getattr(error, "status_code", 500)
+            detail = str(error)
+            if hasattr(error, "body") and error.body:
+                detail = str(error.body)
             if status_code == 429:
                 retry_after = 60
-                if hasattr(error, 'response') and error.response:
+                if hasattr(error, "response") and error.response:
                     retry_after = int(error.response.headers.get("Retry-After", 60))
                 return RateLimitError(retry_after=retry_after)
-            elif status_code == 402:
+            if status_code == 402:
                 return InsufficientBalanceError(provider=self.PROVIDER)
-            elif status_code == 503:
+            if status_code == 503:
                 return ModelUnavailableError(
                     model_id=self.model_id,
-                    reason="Service unavailable"
+                    reason="Service unavailable",
                 )
-            elif status_code == 504:
+            if status_code == 504:
                 return ProviderTimeoutError(timeout_seconds=self.timeout)
+            if status_code in (400, 401, 403, 422):
+                return LLMException(
+                    message=f"{self.PROVIDER}: {detail}",
+                    error_code="API_ERROR",
+                    details={"status_code": status_code},
+                    status_code=status_code,
+                )
 
         if isinstance(error, LLMException):
             return error
@@ -238,9 +253,11 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         logger.error(error_msg)
         print(f"\n{'='*80}\nDEBUG ERROR:\n{error_msg}\n{'='*80}\n", flush=True)
 
-        return ProviderConnectionError(
-            provider=self.PROVIDER,
-            endpoint=self.base_url
+        return LLMException(
+            message=f"{self.PROVIDER}: {str(error)}",
+            error_code="CONNECTION_FAILED",
+            details={"endpoint": self.base_url},
+            status_code=502,
         )
 
     async def list_models(self) -> list[ModelInfo]:

@@ -1,38 +1,34 @@
-# Security & secrets (open source)
+# 安全与密钥管理
 
-## What is **not** in this repository
+## 仓库里**没有**什么
 
-- No real LLM API keys (`sk-...`, OpenRouter, etc.) in source code
-- No committed `.env` (only `backend/.env.example` with placeholders)
-- `backend/config/providers.yaml` stores **environment variable names** only (`api_key_env`), not key values
-- User keys are **not** hardcoded in the frontend; they are submitted at runtime via the connection UI
+- 源码中不包含真实 LLM API Key（`sk-...`、OpenRouter 等）
+- 不提交 `.env`（仅提供 `backend/.env.example` 占位模板）
+- `backend/config/providers.yaml` 只存 **环境变量名**（`api_key_env`），不存 Key 值
+- 前端不硬编码用户 Key；运行时通过连接对话框提交给后端
 
-## What **is** stored when you run the app (local / your server)
+## 运行应用后**本地/服务器**会存什么
 
-| Location | Content | In git? |
-|----------|---------|--------|
-| `backend/myai_studio.db` | Users, sessions, **encrypted** model API keys | No — `*.db` is gitignored |
-| `backend/.encryption_key` | Fernet key used to encrypt API keys in the DB | No — `.encryption_key` is gitignored |
-| `backend/.env` | `SECRET_KEY`, `API_KEY_ENCRYPTION_KEY`, optional provider env vars | No — `.env` is gitignored |
-| Browser `localStorage` | JWT `auth_token`, user profile, language preference | N/A (client only) |
+| 位置                      | 内容                                                             | 是否进 git                          |
+| ------------------------- | ---------------------------------------------------------------- | ----------------------------------- |
+| `backend/myai_studio.db`  | 用户、会话、**加密后**的模型 API Key                             | 否 — `*.db` 已 gitignore            |
+| `backend/.encryption_key` | 用于加密数据库中 API Key 的 Fernet 密钥                          | 否 — `.encryption_key` 已 gitignore |
+| `backend/.env`            | `SECRET_KEY`、`API_KEY_ENCRYPTION_KEY`、各 Provider 可选环境变量 | 否 — `.env` 已 gitignore            |
+| 浏览器 `localStorage`     | JWT `auth_token`、用户信息、语言偏好                             | 不适用（仅客户端）                  |
 
-API keys flow: user enters key in UI → backend encrypts with `API_KEY_ENCRYPTION_KEY` or `.encryption_key` → saved in `model_configs.encrypted_api_key`.
+API Key 流转：用户在 UI 输入 → 后端用 `API_KEY_ENCRYPTION_KEY` 或 `.encryption_key` 加密 → 写入 `model_configs.encrypted_api_key`。
 
-## Before you `git push`
+## `git push` 之前
 
-1. Copy `backend/.env.example` → `backend/.env` and set strong random values:
-   - `SECRET_KEY` (JWT signing)
-   - `API_KEY_ENCRYPTION_KEY` (32-byte Fernet key; or let dev mode create `.encryption_key`)
-2. Never commit: `.env`, `.encryption_key`, `*.db`, `*.sqlite`, `node_modules/`, `.venv/`, `frontend/build/`
-3. If you already ran the app locally, delete or exclude `backend/myai_studio.db` and `backend/.encryption_key` from any commit
-4. Rotate any key that was ever committed by mistake
+1. 复制 `backend/.env.example` → `backend/.env`，并设置足够强的随机值：
+   - `SECRET_KEY`（JWT 签名）
+   - `API_KEY_ENCRYPTION_KEY`（32 字节 Fernet 密钥；开发环境也可由程序自动生成 `.encryption_key`）
+2. 切勿提交：`.env`、`.encryption_key`、`*.db`、`*.sqlite`、`node_modules/`、`.venv/`、`frontend/build/`
+3. 若已在本地跑过应用，确保 `backend/myai_studio.db` 与 `backend/.encryption_key` 不会被打包进提交
+4. 若曾误提交过密钥，务必在对应平台**轮换/作废**该 Key
 
-## Production checklist
+## 生产环境检查清单
 
-- Change default `SECRET_KEY` in `backend/app/config.py` is only a **fallback**; override via `.env`
-- Use HTTPS in production; restrict `CORS_ORIGINS` to your real frontend origin
-- Treat `myai_studio.db` and `.encryption_key` as sensitive backups
-
-## Optional: OMP local catalog endpoint
-
-`GET /api/v1/models/omp/catalog` reads `~/.omp/agent/models.yml` on the **server host**. It does not return raw API key strings, but may expose file paths and base URLs from that file. Disable or protect this route if you do not use OMP.
+- `backend/app/config.py` 中的默认 `SECRET_KEY` 只是**兜底**；生产必须通过 `.env` 覆盖
+- 生产环境使用 HTTPS；将 `CORS_ORIGINS` 限制为真实前端域名
+- 将 `myai_studio.db` 与 `.encryption_key` 视为敏感备份，妥善保管

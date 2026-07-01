@@ -195,6 +195,7 @@ export function AuthPage({ onAuthSuccess, isDarkMode = false, toggleTheme }: Aut
       ? 'radial-gradient(circle at 50% -20%, #1e293b 0%, #0f172a 40%, #020617 100%)'
       : 'radial-gradient(circle at 50% -20%, #f1f5f9 0%, #e2e8f0 40%, #cbd5e1 100%)',
     zIndex: 0,
+    pointerEvents: 'none',
   };
 
   return (
@@ -205,9 +206,9 @@ export function AuthPage({ onAuthSuccess, isDarkMode = false, toggleTheme }: Aut
       </div>
 
       {/* Top-right Controls */}
-      <div className="absolute top-6 right-6 z-50 flex items-center gap-2">
-        <div className={`rounded-full overflow-hidden ${isDarkMode ? 'bg-slate-900 border border-slate-700' : 'bg-white border border-slate-200'}`}>
-          <LanguageSwitcher compact />
+      <div className="absolute top-6 right-6 z-[100] flex items-center gap-2 pointer-events-auto">
+        <div className={`rounded-full ${isDarkMode ? 'bg-slate-900 border border-slate-700' : 'bg-white border border-slate-200 shadow-sm'}`}>
+          <LanguageSwitcher compact menuAlign="end" tone="auth" isDarkMode={isDarkMode} />
         </div>
         <Button
           variant="outline"

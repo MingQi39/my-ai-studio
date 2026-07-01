@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Layers, BarChart2, Settings, Moon, Sun, Sparkles, ChevronRight, LogOut, ChevronDown, Trash2, Calendar, ExternalLink } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { MessageSquare, Settings, Moon, Sun, Sparkles, ChevronRight, LogOut, ChevronDown, Trash2, MapPin, ArrowLeft, Brain, Wrench, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -10,6 +19,11 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { User, SessionResponse, listSessions, deleteSession as apiDeleteSession } from '@/services/api';
 import { BrandLogo } from '@/components/BrandLogo';
+import { useChatStore } from '@/features/travel/stores/useChatStore';
+import {
+  listTravelSessions,
+  removeTravelSession,
+} from '@/features/travel/services/api/sessions';
 
 interface AppSidebarProps {
   activeTab: string;
@@ -37,19 +51,30 @@ export function AppSidebar({
   sessionRefreshTrigger
 }: AppSidebarProps) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const travelSubTab = location.pathname.startsWith('/travel/')
+    ? location.pathname.replace(/^\/travel\/?/, '').split('/')[0] || 'chat'
+    : 'chat';
   const [isHistoryOpen, setIsHistoryOpen] = useState(true);
+  const [isTravelHistoryOpen, setIsTravelHistoryOpen] = useState(true);
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
+  const [travelSessions, setTravelSessions] = useState<SessionResponse[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [isLoadingTravelSessions, setIsLoadingTravelSessions] = useState(false);
+  const travelSessionId = useChatStore((state) => state.currentSessionId);
+  const travelSessionListVersion = useChatStore((state) => state.sessionListVersion);
 
   // 确认对话框状态
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+  const [sessionToDeleteIsTravel, setSessionToDeleteIsTravel] = useState(false);
 
   // 加载会话列表
   const loadSessions = async () => {
     try {
       setIsLoadingSessions(true);
-      const response = await listSessions(1, 50, false);
+      const response = await listSessions(1, 50, false, 'chat');
       setSessions(response.items);
     } catch (error) {
       console.error('Failed to load sessions:', error);
@@ -58,26 +83,48 @@ export function AppSidebar({
     }
   };
 
+  const loadTravelSessions = async () => {
+    try {
+      setIsLoadingTravelSessions(true);
+      const items = await listTravelSessions();
+      setTravelSessions(items);
+    } catch (error) {
+      console.error('Failed to load travel sessions:', error);
+    } finally {
+      setIsLoadingTravelSessions(false);
+    }
+  };
+
   // 当展开历史会话或触发器变化时加载
   useEffect(() => {
-    if (isHistoryOpen) {
+    if (isHistoryOpen && activeTab !== 'travel-agent') {
       loadSessions();
     }
-  }, [isHistoryOpen, sessionRefreshTrigger]);
+  }, [isHistoryOpen, sessionRefreshTrigger, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'travel-agent' && isTravelHistoryOpen) {
+      loadTravelSessions();
+    }
+  }, [activeTab, isTravelHistoryOpen, sessionRefreshTrigger, travelSessionListVersion]);
 
   // 定期刷新会话列表
   useEffect(() => {
+    if (activeTab === 'travel-agent') {
+      const interval = setInterval(() => {
+        if (isTravelHistoryOpen) {
+          loadTravelSessions();
+        }
+      }, 5000);
+      return () => clearInterval(interval);
+    }
     const interval = setInterval(() => {
       if (isHistoryOpen) {
         loadSessions();
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [isHistoryOpen]);
-
-  const handleUserClick = () => {
-    toast.info(t('sidebar.openProfile'));
-  };
+  }, [isHistoryOpen, isTravelHistoryOpen, activeTab]);
 
   const handleLogout = () => {
     if (onLogout) {
@@ -86,21 +133,41 @@ export function AppSidebar({
     }
   };
 
-  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent, isTravel = false) => {
     e.stopPropagation();
     setSessionToDelete(sessionId);
+    setSessionToDeleteIsTravel(isTravel);
     setIsDeleteDialogOpen(true);
+  };
+
+  const handleSelectTravelSession = (sessionId: string) => {
+    navigate(`/travel/chat/${sessionId}`);
+  };
+
+  const handleNewTravelSession = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    useChatStore.getState().startNewSession();
+    navigate('/travel/chat');
   };
 
   const confirmDeleteSession = async () => {
     if (!sessionToDelete) return;
 
     try {
-      await apiDeleteSession(sessionToDelete);
-      setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
+      if (sessionToDeleteIsTravel) {
+        await removeTravelSession(sessionToDelete);
+        setTravelSessions(prev => prev.filter(s => s.id !== sessionToDelete));
+        if (travelSessionId === sessionToDelete) {
+          useChatStore.getState().startNewSession();
+          navigate('/travel/chat');
+        }
+      } else {
+        await apiDeleteSession(sessionToDelete);
+        setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
 
-      if (currentSessionId === sessionToDelete) {
-        onSelectSession('');
+        if (currentSessionId === sessionToDelete) {
+          navigate('/');
+        }
       }
 
       toast.success(t('sidebar.sessionDeleted'));
@@ -129,67 +196,95 @@ export function AppSidebar({
     <div className="w-full h-full flex flex-col whitespace-nowrap">
 
       {/* Header */}
-      <a
-        href="http://houmq.cn/"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="h-[70px] flex items-center px-5 gap-3 pt-2 flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity no-underline group"
+      <button
+        type="button"
+        onClick={() => navigate('/')}
+        className="h-[70px] w-full flex items-center px-5 gap-3 pt-2 flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity text-left group"
       >
         <BrandLogo size="sm" className="group-hover:shadow-md transition-shadow" alt={t('common.appName')} />
-        <div className="flex items-center gap-2">
-          <h1 className="font-semibold text-[18px] tracking-tight text-[var(--text-primary)]">{t('common.appName')}</h1>
-          <ExternalLink size={14} className="text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 transition-opacity" />
-        </div>
-      </a>
+        <h1 className="font-semibold text-[18px] tracking-tight text-[var(--text-primary)]">{t('common.appName')}</h1>
+      </button>
 
-      {/* Navigation & Sessions - Scrollable */}
+      {/* Navigation - Scrollable */}
       <ScrollArea className="flex-1 px-3 mt-4 custom-scrollbar">
         <div className="flex flex-col gap-1 pb-4">
-
-          {/* 历史会话 - 可折叠 */}
-          <Collapsible open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
-            <CollapsibleTrigger asChild>
+          {activeTab === 'travel-agent' ? (
+            <>
               <button
-                className={`
-                  w-full flex items-center justify-between px-3 h-[40px] rounded-lg text-sm font-medium transition-all group
-                  ${isHistoryOpen
-                    ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-text)]'
-                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}
-                `}
+                onClick={() => navigate('/')}
+                className="flex items-center gap-2 px-3 h-[36px] rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors mb-2"
               >
-                <div className="flex items-center gap-3">
-                  <MessageSquare size={20} />
-                  <span>{t('sidebar.history')}</span>
-                </div>
-                <ChevronDown
-                  size={14}
-                  className={`transition-transform duration-200 ${isHistoryOpen ? 'rotate-180' : ''}`}
-                />
+                <ArrowLeft size={16} />
+                {t('travel.sidebar.backToWorkspace')}
               </button>
-            </CollapsibleTrigger>
 
-            <CollapsibleContent className="mt-1">
-              <div className="pl-2 space-y-0.5">
-                {isLoadingSessions ? (
-                  <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
-                    {t('common.loading')}
-                  </div>
-                ) : sessions.length === 0 ? (
-                  <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
-                    {t('sidebar.noSessions')}
-                  </div>
-                ) : (
-                  sessions
-                    .filter(session => session.message_count > 0)
-                    .slice(0, 10)
-                    .map((session) => {
-                      const isActive = currentSessionId === session.id;
+              <p className="px-3 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                {t('sidebar.travelAgent')}
+              </p>
 
-                      return (
-                        <div
-                          key={session.id}
-                          onClick={() => onSelectSession(session.id)}
-                          className={`
+              <NavButton
+                icon={<MessageSquare size={20} />}
+                label={t('travel.sidebar.chat')}
+                id="travel-chat"
+                isActive={travelSubTab === 'chat'}
+                onClick={() => {
+                  const id = useChatStore.getState().currentSessionId;
+                  navigate(id ? `/travel/chat/${id}` : '/travel/chat');
+                }}
+              />
+              <NavButton
+                icon={<Plus size={20} />}
+                label={t('travel.sidebar.newChat')}
+                id="travel-new-chat"
+                isActive={false}
+                onClick={() => handleNewTravelSession()}
+              />
+
+              <Collapsible open={isTravelHistoryOpen} onOpenChange={setIsTravelHistoryOpen} className="mt-1">
+                <div className="flex items-center justify-between px-3 mb-1">
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    >
+                      <ChevronDown
+                        size={12}
+                        className={`transition-transform duration-200 ${isTravelHistoryOpen ? 'rotate-180' : ''}`}
+                      />
+                      {t('travel.sidebar.history')}
+                    </button>
+                  </CollapsibleTrigger>
+                  <button
+                    type="button"
+                    onClick={handleNewTravelSession}
+                    className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    title={t('travel.sidebar.newChat')}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+
+                <CollapsibleContent>
+                  <div className="pl-2 space-y-0.5">
+                    {isLoadingTravelSessions ? (
+                      <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
+                        {t('common.loading')}
+                      </div>
+                    ) : travelSessions.length === 0 ? (
+                      <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
+                        {t('travel.sidebar.noSessions')}
+                      </div>
+                    ) : (
+                      travelSessions
+                        .slice(0, 20)
+                        .map((session) => {
+                          const isActive = travelSessionId === session.id;
+
+                          return (
+                            <div
+                              key={session.id}
+                              onClick={() => handleSelectTravelSession(session.id)}
+                              className={`
                           relative group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer
                           transition-all duration-200 text-xs
                           ${isActive
@@ -197,51 +292,156 @@ export function AppSidebar({
                               : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]'
                             }
                         `}
-                        >
-                          {isActive && (
-                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full" />
-                          )}
+                            >
+                              {isActive && (
+                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full" />
+                              )}
 
-                          <MessageSquare size={14} className="flex-shrink-0" />
+                              <MessageSquare size={14} className="flex-shrink-0" />
 
-                          <div className="flex-1 min-w-0">
-                            <p className="truncate font-medium">
-                              {session.title || t('sidebar.untitledSession')}
-                            </p>
-                            <p className="text-[10px] text-[var(--text-secondary)] truncate">
-                              {t('sidebar.messageCount', { count: session.message_count })} · {formatDate(session.updated_at)}
-                            </p>
-                          </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="truncate font-medium">
+                                  {session.title || t('sidebar.untitledSession')}
+                                </p>
+                                <p className="text-[10px] text-[var(--text-secondary)] truncate">
+                                  {t('sidebar.messageCount', { count: session.message_count })} · {formatDate(session.updated_at)}
+                                </p>
+                              </div>
 
-                          <button
-                            onClick={(e) => handleDeleteSession(session.id, e)}
-                            className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      );
-                    })
-                )}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteSession(session.id, e, true)}
+                                className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
-          {/* 其他导航按钮 */}
-          <NavButton
-            icon={<Layers size={20} />}
-            label={t('sidebar.batchJobs')}
-            id="batch-jobs"
-            isActive={activeTab === 'batch-jobs'}
-            onClick={() => onTabChange('batch-jobs')}
-          />
-          <NavButton
-            icon={<BarChart2 size={20} />}
-            label={t('sidebar.evaluation')}
-            id="evaluation"
-            isActive={activeTab === 'evaluation'}
-            onClick={() => onTabChange('evaluation')}
-          />
+              <NavButton
+                icon={<Brain size={20} />}
+                label={t('travel.sidebar.react')}
+                id="travel-react"
+                isActive={travelSubTab === 'react'}
+                onClick={() => navigate('/travel/react')}
+              />
+              <NavButton
+                icon={<Wrench size={20} />}
+                label={t('travel.sidebar.tools')}
+                id="travel-tools"
+                isActive={travelSubTab === 'tools'}
+                onClick={() => navigate('/travel/tools')}
+              />
+              <NavButton
+                icon={<Settings size={20} />}
+                label={t('travel.sidebar.agentSettings')}
+                id="travel-settings"
+                isActive={travelSubTab === 'settings'}
+                onClick={() => navigate('/travel/settings')}
+              />
+
+            </>
+          ) : (
+            <>
+              {/* 历史会话 - 可折叠 */}
+              <Collapsible open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+                <CollapsibleTrigger asChild>
+                  <button
+                    onClick={() => onTabChange('history')}
+                    className={`
+                  w-full flex items-center justify-between px-3 h-[40px] rounded-lg text-sm font-medium transition-all group
+                  ${activeTab === 'history' && isHistoryOpen
+                    ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-text)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}
+                `}
+                  >
+                    <div className="flex items-center gap-3">
+                      <MessageSquare size={20} />
+                      <span>{t('sidebar.history')}</span>
+                    </div>
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform duration-200 ${isHistoryOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                </CollapsibleTrigger>
+
+                <CollapsibleContent className="mt-1">
+                  <div className="pl-2 space-y-0.5">
+                    {isLoadingSessions ? (
+                      <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
+                        {t('common.loading')}
+                      </div>
+                    ) : sessions.length === 0 ? (
+                      <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
+                        {t('sidebar.noSessions')}
+                      </div>
+                    ) : (
+                      sessions
+                        .filter(session => session.message_count > 0)
+                        .slice(0, 10)
+                        .map((session) => {
+                          const isActive = currentSessionId === session.id;
+
+                          return (
+                            <div
+                              key={session.id}
+                              onClick={() => {
+                                navigate(`/session/${session.id}`);
+                              }}
+                              className={`
+                          relative group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer
+                          transition-all duration-200 text-xs
+                          ${isActive
+                              ? 'bg-blue-500/10 text-blue-500'
+                              : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]'
+                            }
+                        `}
+                            >
+                              {isActive && (
+                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full" />
+                              )}
+
+                              <MessageSquare size={14} className="flex-shrink-0" />
+
+                              <div className="flex-1 min-w-0">
+                                <p className="truncate font-medium">
+                                  {session.title || t('sidebar.untitledSession')}
+                                </p>
+                                <p className="text-[10px] text-[var(--text-secondary)] truncate">
+                                  {t('sidebar.messageCount', { count: session.message_count })} · {formatDate(session.updated_at)}
+                                </p>
+                              </div>
+
+                              <button
+                                onClick={(e) => handleDeleteSession(session.id, e)}
+                                className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              <NavButton
+                icon={<MapPin size={20} />}
+                label={t('sidebar.travelAgent')}
+                id="travel-agent"
+                isActive={activeTab === 'travel-agent'}
+                onClick={() => onTabChange('travel-agent')}
+                hasBadge
+              />
+            </>
+          )}
         </div>
       </ScrollArea>
 
@@ -280,34 +480,48 @@ export function AppSidebar({
             onClick={() => onTabChange('settings')}
           />
 
-          {/* User Profile & Logout */}
-          <div
-            className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors w-full group mt-1 cursor-pointer select-none"
-            onClick={handleUserClick}
-          >
-            <div className="flex items-center gap-3 overflow-hidden">
-              <Avatar className="h-6 w-6 border border-[var(--border-color)]">
-                <AvatarImage src="https://github.com/MingQi39.png" />
-                <AvatarFallback>{currentUser?.username?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate">
-                {currentUser?.username || t('sidebar.user')}
-              </span>
-            </div>
-
-            {currentUser && (
+          {/* User Profile Menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleLogout();
-                }}
-                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/10 rounded-md text-[var(--text-secondary)] hover:text-red-500 transition-all"
-                title={t('sidebar.logout')}
+                type="button"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors w-full group mt-1 select-none text-left"
+              >
+                <Avatar className="h-6 w-6 border border-[var(--border-color)]">
+                  <AvatarImage src="https://github.com/MingQi39.png" />
+                  <AvatarFallback>{currentUser?.username?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate flex-1">
+                  {currentUser?.username || t('sidebar.user')}
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="w-56 border-[var(--border-color)] bg-[var(--bg-card)] text-[var(--text-primary)]"
+            >
+              {currentUser && (
+                <>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium truncate">{currentUser.username}</span>
+                      <span className="text-xs text-[var(--text-secondary)] truncate">{currentUser.email}</span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-[var(--border-color)]" />
+                </>
+              )}
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={handleLogout}
+                className="cursor-pointer"
               >
                 <LogOut size={16} />
-              </button>
-            )}
-          </div>
+                {t('sidebar.logout')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

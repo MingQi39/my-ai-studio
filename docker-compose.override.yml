@@ -1,0 +1,5 @@
+# 本地开发：避免 macOS 占用 80 端口需 sudo
+services:
+  caddy:
+    ports:
+      - "8080:80"

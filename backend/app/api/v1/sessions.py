@@ -39,14 +39,30 @@ async def list_sessions(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     include_archived: bool = Query(False, description="是否包含已归档会话"),
+    session_type: str | None = Query(
+        "chat",
+        description="会话类型过滤：chat / travel；传 all 表示不过滤",
+    ),
     user_id: UUID = Depends(get_current_user_auth),
     session_service: SessionService = Depends(get_session_service),
 ) -> PaginatedResponse[SessionResponse]:
     """列出用户会话"""
+    from app.models.database import SessionType
     from app.models.schemas import PaginationParams
 
     params = PaginationParams(page=page, page_size=page_size)
-    result = await session_service.list_sessions(user_id, params, include_archived)
+    type_filter: SessionType | None
+    if session_type is None or session_type == "all":
+        type_filter = None
+    else:
+        try:
+            type_filter = SessionType(session_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid session_type") from exc
+
+    result = await session_service.list_sessions(
+        user_id, params, include_archived, session_type=type_filter
+    )
     return result
 
 

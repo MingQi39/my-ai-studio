@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     LOG_FORMAT: Literal["json", "console"] = "json"
 
+    # Travel Agent external tools
+    AMAP_API_KEY: str = ""
+    TAVILY_API_KEY: str = ""
+    JUHE_TRAIN_API_KEY: str = ""
+    JUHE_FLIGHT_API_KEY: str = ""
+    HTTP_TIMEOUT_SECONDS: int = 10
+    TAVILY_MAX_RESULTS: int = 5
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def validate_cors_origins(cls, v: str | list[str]) -> str:

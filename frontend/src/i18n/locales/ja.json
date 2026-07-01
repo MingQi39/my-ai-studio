@@ -59,8 +59,6 @@
     "noSessions": "セッションがありません",
     "untitledSession": "タイトルなしのセッション",
     "messageCount": "{{count}}件のメッセージ",
-    "batchJobs": "バッチジョブ",
-    "evaluation": "評価",
     "settings": "設定",
     "lightMode": "ライトモード",
     "darkMode": "ダークモード",

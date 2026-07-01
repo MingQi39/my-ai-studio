@@ -1,0 +1,6 @@
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+minimumReleaseAgeExclude:
+  - react-router-dom@7.18.1
+  - react-router@7.18.1

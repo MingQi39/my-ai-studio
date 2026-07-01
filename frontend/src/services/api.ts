@@ -359,6 +359,7 @@ export async function getBuiltinModelCatalog(): Promise<BuiltinModelCatalog> {
 export interface SessionCreate {
   title?: string;
   description?: string;
+  session_type?: 'chat' | 'travel';
 }
 
 // 会话更新请求
@@ -373,6 +374,7 @@ export interface SessionResponse {
   id: string;
   title: string;
   description: string | null;
+  session_type?: 'chat' | 'travel';
   is_archived: boolean;
   created_at: string;
   updated_at: string;
@@ -418,12 +420,14 @@ export async function createSession(data: SessionCreate = {}): Promise<SessionRe
 export async function listSessions(
   page: number = 1,
   pageSize: number = 20,
-  includeArchived: boolean = false
+  includeArchived: boolean = false,
+  sessionType: 'chat' | 'travel' | 'all' = 'chat',
 ): Promise<PaginatedResponse<SessionResponse>> {
   const params = new URLSearchParams();
   params.append('page', page.toString());
   params.append('page_size', pageSize.toString());
   params.append('include_archived', includeArchived.toString());
+  params.append('session_type', sessionType);
 
   return request<PaginatedResponse<SessionResponse>>(`/sessions?${params.toString()}`);
 }
@@ -474,6 +478,14 @@ export async function getSessionMessages(
 // 聊天 API
 // ============================================================================
 
+/** 主聊天工具开关（与后端 ChatToolsConfig 对齐） */
+export interface ChatToolsConfig {
+  search: boolean;
+  code: boolean;
+  function: boolean;
+  structured: boolean;
+}
+
 // 聊天请求
 export interface ChatRequest {
   session_id: string;
@@ -483,14 +495,23 @@ export interface ChatRequest {
   enable_reasoning?: boolean; // 是否启用推理模式
   system_prompt?: string; // 系统指令
   model_config_id?: string; // 指定使用的模型配置 ID
+  tools_config?: ChatToolsConfig;
 }
 
 
 // 流式聊天块类型
 export interface ChatStreamChunk {
-  type: 'content' | 'thinking' | 'tool_call' | 'done' | 'error';
+  type: 'content' | 'thinking' | 'tool_call' | 'tool_result' | 'done' | 'error';
   content?: string;
   tool_call?: Record<string, unknown>;
+  tool_result?: {
+    tool_name: string;
+    tool_type?: string;
+    tool_input?: Record<string, unknown>;
+    tool_output?: string;
+    status: 'running' | 'completed' | 'error';
+    duration_ms?: number;
+  };
   error?: string;
   message?: string;
   usage?: Record<string, unknown>;

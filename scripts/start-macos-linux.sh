@@ -141,17 +141,33 @@ trap cleanup SIGINT SIGTERM
 
 # 启动后端（后台运行）
 echo -e "${BLUE}[信息] 启动后端服务...${NC}"
-cd backend
-source .venv/bin/activate
-python run.py &
-BACKEND_PID=$!
-cd ..
+BACKEND_PORT=10011
+EXISTING_BACKEND_PID=$(lsof -ti tcp:${BACKEND_PORT} -sTCP:LISTEN 2>/dev/null || true)
+if [ -n "$EXISTING_BACKEND_PID" ]; then
+    echo -e "${YELLOW}[警告] 端口 ${BACKEND_PORT} 已被占用（PID: ${EXISTING_BACKEND_PID}），跳过后端启动${NC}"
+    echo -e "${BLUE}[提示] 若需重启后端: kill ${EXISTING_BACKEND_PID} && ./scripts/start-macos-linux.sh${NC}"
+else
+    cd backend
+    source .venv/bin/activate
+    python run.py &
+    BACKEND_PID=$!
+    cd ..
 
-# 等待后端启动
-echo -e "${BLUE}[信息] 等待后端启动...${NC}"
-sleep 3
+    # 等待后端启动
+    echo -e "${BLUE}[信息] 等待后端启动...${NC}"
+    sleep 3
+fi
 
 # 启动前端（前台运行）
+FRONTEND_PORT=11010
+EXISTING_FRONTEND_PID=$(lsof -ti tcp:${FRONTEND_PORT} -sTCP:LISTEN 2>/dev/null || true)
+if [ -n "$EXISTING_FRONTEND_PID" ]; then
+    echo -e "${YELLOW}[警告] 端口 ${FRONTEND_PORT} 已被占用（PID: ${EXISTING_FRONTEND_PID}），跳过前端启动${NC}"
+    echo -e "${GREEN}[成功] 前端已在运行: http://localhost:${FRONTEND_PORT}${NC}"
+    echo -e "${BLUE}[提示] 若需重启前端: kill ${EXISTING_FRONTEND_PID}${NC}"
+    exit 0
+fi
+
 echo -e "${BLUE}[信息] 启动前端服务...${NC}"
 cd frontend
 npm run dev -- --force

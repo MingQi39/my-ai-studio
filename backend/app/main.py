@@ -65,6 +65,7 @@ tags_metadata = [
     {"name": "models", "description": "模型配置"},
     {"name": "files", "description": "文件管理"},
     {"name": "batch", "description": "批处理任务"},
+    {"name": "travel", "description": "旅行规划 Agent（ReAct / 工具 / 对比）"},
 ]
 
 # 创建 FastAPI 应用

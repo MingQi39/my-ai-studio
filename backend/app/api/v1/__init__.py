@@ -6,7 +6,7 @@ API v1 模块
 from fastapi import APIRouter
 
 # 导入所有端点
-from app.api.v1 import auth, batch, chat, files, health, models, models_info, omp, sessions, system_instructions
+from app.api.v1 import auth, batch, chat, files, health, models, models_info, omp, sessions, system_instructions, travel
 
 # 创建 v1 路由器（不带前缀，前缀在主路由中添加）
 api_router = APIRouter()
@@ -22,5 +22,6 @@ api_router.include_router(files.router, tags=["files"])
 api_router.include_router(batch.router, tags=["batch"])
 api_router.include_router(system_instructions.router, tags=["system-instructions"])
 api_router.include_router(omp.router, tags=["models-omp"])
+api_router.include_router(travel.router, tags=["travel"])
 
 __all__ = ["api_router"]

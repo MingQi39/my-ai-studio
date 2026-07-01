@@ -1,0 +1,15 @@
+.venv
+__pycache__
+*.py[cod]
+*.db
+*.sqlite
+.encryption_key
+.env
+.env.*
+storage/
+.pytest_cache
+tests/
+.git
+*.md
+deploy_init.ps1
+generate_encryption_key.py

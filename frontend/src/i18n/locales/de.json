@@ -59,8 +59,6 @@
     "noSessions": "Noch keine Sitzungen",
     "untitledSession": "Unbenannte Sitzung",
     "messageCount": "{{count}} Nachrichten",
-    "batchJobs": "Batch-Jobs",
-    "evaluation": "Auswertung",
     "settings": "Einstellungen",
     "lightMode": "Heller Modus",
     "darkMode": "Dunkler Modus",

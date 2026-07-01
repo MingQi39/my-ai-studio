@@ -74,12 +74,21 @@ class DeepSeekAdapter(OpenAICompatibleAdapter):
         tools: list[dict] | None,
         **kwargs,
     ) -> dict:
-        """覆写：添加思考模式参数"""
+        """覆写：思考模式与 Function Calling 不能同时开启；json_schema 不可用"""
         params = super()._build_request_params(
             messages, temperature, max_tokens, top_p, stream, tools, **kwargs
         )
 
-        # 如果启用思考模式且不是 reasoner 模型
+        # DeepSeek 不支持 tools 与 response_format 同传，且仅支持 json_object
+        if tools:
+            params.pop("response_format", None)
+        elif params.get("response_format", {}).get("type") == "json_schema":
+            params["response_format"] = {"type": "json_object"}
+
+        if tools:
+            params["tool_choice"] = "auto"
+            return params
+
         enable_reasoning = kwargs.get("enable_reasoning", self.enable_reasoning)
         if enable_reasoning and self.model_id != "deepseek-reasoner":
             params["extra_body"] = {"thinking": {"type": "enabled"}}

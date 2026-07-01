@@ -59,8 +59,6 @@
     "noSessions": "Aucune session pour le moment",
     "untitledSession": "Session sans titre",
     "messageCount": "{{count}} msgs",
-    "batchJobs": "Tâches par lot",
-    "evaluation": "Évaluation",
     "settings": "Paramètres",
     "lightMode": "Mode clair",
     "darkMode": "Mode sombre",

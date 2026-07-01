@@ -59,8 +59,6 @@
     "noSessions": "尚無對話紀錄",
     "untitledSession": "未命名對話",
     "messageCount": "{{count}} 則訊息",
-    "batchJobs": "批次工作",
-    "evaluation": "評估",
     "settings": "設定",
     "lightMode": "亮色模式",
     "darkMode": "深色模式",

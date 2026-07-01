@@ -4,7 +4,7 @@
 定义聊天消息、响应块等类型。
 """
 
-from typing import TypedDict, Literal, Any
+from typing import TypedDict, Literal, Any, NotRequired
 
 
 class ContentBlock(TypedDict, total=False):
@@ -22,7 +22,7 @@ class ChatMessage(TypedDict, total=False):
     content: str | list[ContentBlock]
     tool_call_id: str | None  # 用于 tool 角色
     tool_calls: list[dict] | None  # 用于 assistant 角色
-    name: str | None  # 可选的名称
+    reasoning_content: str | None  # DeepSeek 思考模式，tool 轮次需回传
 
 
 class ToolCall(TypedDict):
@@ -34,10 +34,11 @@ class ToolCall(TypedDict):
 
 class ChatCompletionChunk(TypedDict):
     """流式响应块"""
-    type: Literal["content", "thinking", "tool_call", "usage", "done", "error"]
+    type: Literal["content", "thinking", "tool_call", "tool_result", "usage", "done", "error"]
     content: str | None
     thinking: str | None
     tool_call: dict | None
+    tool_result: NotRequired[dict | None]
     usage: dict | None
     error: str | None
 

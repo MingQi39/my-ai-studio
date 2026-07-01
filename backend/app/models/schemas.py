@@ -17,6 +17,7 @@ from app.models.database import (
     FileType,
     LLMProvider,
     MessageRole,
+    SessionType,
     ToolExecutionStatus,
     ToolType,
 )
@@ -124,6 +125,7 @@ class SessionCreate(BaseModel):
 
     title: str | None = Field(default="New Chat", max_length=255)
     description: str | None = None
+    session_type: SessionType = SessionType.chat
 
 
 class SessionUpdate(BaseModel):
@@ -140,6 +142,7 @@ class SessionResponse(BaseSchema):
     id: UUID
     title: str
     description: str | None
+    session_type: SessionType = SessionType.chat
     is_archived: bool
     created_at: datetime
     updated_at: datetime
@@ -166,6 +169,19 @@ class MessageCreate(BaseModel):
     thinking_content: str | None = None
     token_count: int | None = None
     file_ids: list[UUID] | None = None
+    tool_calls: list[dict[str, Any]] | None = None
+
+
+class ChatToolsConfig(BaseModel):
+    """Enabled tools for main chat (mirrors frontend toggles)."""
+
+    search: bool = False
+    code: bool = False
+    function: bool = False
+    structured: bool = False
+
+    def any_enabled(self) -> bool:
+        return self.search or self.code or self.function or self.structured
 
 
 class MessageResponse(BaseSchema):
@@ -392,6 +408,7 @@ class ChatRequest(BaseModel):
     enable_reasoning: bool = True  # 是否启用推理模式
     system_prompt: str | None = None  # 临时系统指令（覆盖会话配置）
     model_config_id: UUID | None = None  # 指定使用的模型配置 ID
+    tools_config: ChatToolsConfig | None = None  # 主聊天工具开关
 
 
 

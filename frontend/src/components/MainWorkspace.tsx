@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Menu, Code2, Sparkles, Image as ImageIcon, FileText, X, ChevronDown, Video, Terminal, Loader2, StopCircle, Plus, Bot, Zap, Copy, ExternalLink, MessageSquarePlus, Trash2, Cloud, Settings2, ArrowUp, LayoutGrid } from 'lucide-react';
+import { Menu, Code2, Sparkles, Image as ImageIcon, FileText, X, ChevronDown, Video, Terminal, Loader2, StopCircle, Plus, Bot, Zap, Copy, ExternalLink, MessageSquarePlus, Trash2, Cloud, Settings2, ArrowUp, LayoutGrid, Globe, Code, FileJson } from 'lucide-react';
 import { MessageContent } from '@/components/MessageContent';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -27,19 +27,26 @@ import {
 } from '@/services/api';
 
 import { BrandLogo } from '@/components/BrandLogo';
+import { ToolToggle, type ChatToolsState, CHAT_TOOLS_AVAILABLE } from '@/components/ControlPanel';
 
 // Types for our Messages
+type ChatToolRun = {
+   tool_name: string;
+   tool_type?: string;
+   tool_input?: Record<string, unknown>;
+   tool_output?: string;
+   status: 'running' | 'completed' | 'error';
+};
+
 type Message = {
    id: string;
    role: 'user' | 'assistant';
    content: string;
-   // image attachments
    images?: Array<{
       id: string;
       url: string;
       name: string;
    }>;
-   // AI specific fields
    thinking?: string;
    isThinking?: boolean;
    tool?: {
@@ -48,6 +55,7 @@ type Message = {
       output?: string;
       status: 'running' | 'completed';
    };
+   toolRuns?: ChatToolRun[];
 };
 
 interface MainWorkspaceProps {
@@ -67,6 +75,9 @@ interface MainWorkspaceProps {
    toggleControlPanel?: () => void;
    onSelectProviderModel: (providerId: string, displayName: string) => void;
    selectedModel: string;
+   hidden?: boolean;
+   toolsState: ChatToolsState;
+   onToolsStateChange: (state: ChatToolsState) => void;
 }
 
 export function MainWorkspace({
@@ -86,7 +97,11 @@ export function MainWorkspace({
    toggleControlPanel,
    onSelectProviderModel,
    selectedModel,
+   hidden = false,
+   toolsState,
+   onToolsStateChange,
 }: MainWorkspaceProps) {
+   if (hidden) return null;
    const { t, i18n } = useTranslation();
    const [input, setInput] = useState('');
    const [uploadedImages, setUploadedImages] = useState<Array<{
@@ -99,6 +114,7 @@ export function MainWorkspace({
    const [messages, setMessages] = useState<Message[]>([]);
    const [isGenerating, setIsGenerating] = useState(false);
    const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
+   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
    const activeModel = selectedModel || 'DeepSeek-R1';
 
    // Session State
@@ -119,6 +135,7 @@ export function MainWorkspace({
 
    const scrollRef = useRef<HTMLDivElement>(null);
    const menuRef = useRef<HTMLDivElement>(null);
+   const toolsMenuRef = useRef<HTMLDivElement>(null);
    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
    // Load Sessions
@@ -200,11 +217,14 @@ export function MainWorkspace({
       }
    }, [messages, isGenerating]);
 
-   // Click outside menu
+   // Click outside menus
    useEffect(() => {
       function handleClickOutside(event: MouseEvent) {
          if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
             setIsPlusMenuOpen(false);
+         }
+         if (toolsMenuRef.current && !toolsMenuRef.current.contains(event.target as Node)) {
+            setIsToolsMenuOpen(false);
          }
       }
       document.addEventListener("mousedown", handleClickOutside);
@@ -356,8 +376,9 @@ export function MainWorkspace({
          file_ids: currentImages.length > 0 ? currentImages.map(img => img.id) : undefined,
          stream: true,
          enable_reasoning: enableReasoning,
-         system_prompt: systemPrompt || undefined, // system prompt
-         model_config_id: modelConfigId || undefined, // model config to use
+         system_prompt: systemPrompt || undefined,
+         model_config_id: modelConfigId || undefined,
+         tools_config: toolsState,
       };
 
       let thinkingContent = '';
@@ -380,6 +401,39 @@ export function MainWorkspace({
                      ? { ...m, content: responseContent, isThinking: true }
                      : m
                ));
+            } else if (chunk.type === 'tool_result' && chunk.tool_result) {
+               const tr = chunk.tool_result;
+               setMessages(prev => prev.map(m => {
+                  if (m.id !== aiMsgId) return m;
+                  const runs = [...(m.toolRuns || [])];
+                  const runningIdx = runs.findIndex(
+                     r => r.tool_name === tr.tool_name && r.status === 'running'
+                  );
+                  if (tr.status === 'running') {
+                     runs.push({ ...tr });
+                  } else if (runningIdx >= 0) {
+                     runs[runningIdx] = { ...runs[runningIdx], ...tr };
+                  } else {
+                     runs.push({ ...tr });
+                  }
+
+                  let tool = m.tool;
+                  if (tr.tool_name === 'execute_python') {
+                     const code = String(tr.tool_input?.code ?? '');
+                     if (tr.status === 'running') {
+                        tool = { name: tr.tool_name, code, status: 'running' };
+                     } else {
+                        tool = {
+                           name: tr.tool_name,
+                           code,
+                           output: tr.tool_output,
+                           status: tr.status === 'error' ? 'running' : 'completed',
+                        };
+                     }
+                  }
+
+                  return { ...m, toolRuns: runs, tool, isThinking: true };
+               }));
             } else if (chunk.type === 'done') {
                setMessages(prev => prev.map(m =>
                   m.id === aiMsgId
@@ -471,8 +525,42 @@ export function MainWorkspace({
       setIsPlusMenuOpen(false);
    };
 
-   const handleExportCode = () => {
-      toast.success(t('workspace.codeExported'));
+   const handleExportCode = async () => {
+      const snippets: string[] = [];
+
+      for (const msg of messages) {
+         if (msg.tool?.code?.trim()) {
+            snippets.push(msg.tool.code.trim());
+         }
+
+         for (const run of msg.toolRuns ?? []) {
+            if (run.tool_name === 'execute_python') {
+               const code = String(run.tool_input?.code ?? '').trim();
+               if (code) snippets.push(code);
+            }
+         }
+
+         if (msg.content) {
+            const fenced = msg.content.matchAll(/```(?:[\w+-]*)?\n([\s\S]*?)```/g);
+            for (const match of fenced) {
+               const block = match[1]?.trim();
+               if (block) snippets.push(block);
+            }
+         }
+      }
+
+      const unique = [...new Set(snippets)];
+      if (unique.length === 0) {
+         toast.error(t('workspace.codeExportEmpty'));
+         return;
+      }
+
+      try {
+         await navigator.clipboard.writeText(unique.join('\n\n'));
+         toast.success(t('workspace.codeExported'));
+      } catch {
+         toast.error(t('workspace.codeExportFailed'));
+      }
    };
 
 
@@ -517,6 +605,7 @@ export function MainWorkspace({
                   variant="ghost"
                   size="icon"
                   onClick={handleExportCode}
+                  title={t('workspace.exportCode')}
                   className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md"
                >
                   <Code2 size={20} />
@@ -591,7 +680,12 @@ export function MainWorkspace({
                                  />
                               )}
 
-                              {/* Tool Block */}
+                              {/* Tool runs (search / function) */}
+                              {msg.toolRuns && msg.toolRuns.filter(r => r.tool_name !== 'execute_python').map((run, i) => (
+                                 <ChatToolRunBlock key={`${run.tool_name}-${i}`} run={run} isDarkMode={isDarkMode} />
+                              ))}
+
+                              {/* Python execution block */}
                               {msg.tool && (
                                  <ToolExecutionBlock
                                     code={msg.tool.code}
@@ -695,14 +789,59 @@ export function MainWorkspace({
 
                      {/* Left Controls */}
                      <div className="flex items-center gap-1">
-                        <Button
-                           variant="ghost"
-                           size="sm"
-                           className="h-8 rounded-full px-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2 text-xs font-medium"
-                        >
-                           <LayoutGrid size={16} />
-                           {t('workspace.tools')}
-                        </Button>
+                        <div ref={toolsMenuRef} className="relative">
+                           <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                 setIsPlusMenuOpen(false);
+                                 setIsToolsMenuOpen(!isToolsMenuOpen);
+                              }}
+                              className={`h-8 rounded-full px-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2 text-xs font-medium ${isToolsMenuOpen ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]' : ''}`}
+                           >
+                              <LayoutGrid size={16} />
+                              {t('workspace.tools')}
+                           </Button>
+
+                           {isToolsMenuOpen && (
+                              <div className="absolute bottom-full left-0 mb-3 w-64 bg-[var(--bg-card)] border border-[var(--border-color)] shadow-2xl rounded-xl overflow-hidden p-3 animate-in fade-in zoom-in-95 duration-200 z-50">
+                                 <div className="text-[10px] font-semibold text-[var(--text-secondary)] px-1 pb-2 uppercase tracking-wider">
+                                    {t('controlPanel.tools')}
+                                 </div>
+                                 <div className="flex flex-col gap-3">
+                                    <ToolToggle
+                                       icon={<Globe size={16} />}
+                                       label={t('controlPanel.googleSearch')}
+                                       checked={toolsState.search}
+                                       disabled={!CHAT_TOOLS_AVAILABLE}
+                                       onCheckedChange={(c) => onToolsStateChange({ ...toolsState, search: c })}
+                                    />
+                                    <ToolToggle
+                                       icon={<Terminal size={16} />}
+                                       label={t('controlPanel.codeExec')}
+                                       checked={toolsState.code}
+                                       disabled={!CHAT_TOOLS_AVAILABLE}
+                                       onCheckedChange={(c) => onToolsStateChange({ ...toolsState, code: c })}
+                                    />
+                                    <ToolToggle
+                                       icon={<Code size={16} />}
+                                       label={t('controlPanel.functionCall')}
+                                       checked={toolsState.function}
+                                       disabled={!CHAT_TOOLS_AVAILABLE}
+                                       onCheckedChange={(c) => onToolsStateChange({ ...toolsState, function: c })}
+                                    />
+                                    <ToolToggle
+                                       icon={<FileJson size={16} />}
+                                       label={t('controlPanel.structuredOutput')}
+                                       checked={toolsState.structured}
+                                       disabled={!CHAT_TOOLS_AVAILABLE}
+                                       onCheckedChange={(c) => onToolsStateChange({ ...toolsState, structured: c })}
+                                    />
+                                 </div>
+                              </div>
+                           )}
+                        </div>
                      </div>
 
                      {/* Right Controls */}
@@ -713,7 +852,10 @@ export function MainWorkspace({
                            <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
+                              onClick={() => {
+                                 setIsToolsMenuOpen(false);
+                                 setIsPlusMenuOpen(!isPlusMenuOpen);
+                              }}
                               className={`h-8 w-8 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] ${isPlusMenuOpen ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]' : ''}`}
                            >
                               <Plus size={20} />
@@ -1159,6 +1301,42 @@ function ThinkingBlock({ text, isStreaming, isDarkMode }: { text: string, isStre
          </CollapsibleContent>
       </Collapsible>
    )
+}
+
+function ChatToolRunBlock({ run, isDarkMode }: { run: ChatToolRun; isDarkMode: boolean }) {
+   const { t } = useTranslation();
+   const isRunning = run.status === 'running';
+   const isError = run.status === 'error';
+   const label =
+      run.tool_name === 'web_search' ? t('controlPanel.googleSearch')
+      : run.tool_name === 'calculate' ? t('controlPanel.functionCall')
+      : run.tool_name;
+
+   return (
+      <div className="rounded-lg border border-[var(--border-color)] overflow-hidden text-sm">
+         <div className="flex items-center justify-between px-4 py-2 bg-[var(--bg-card)] border-b border-[var(--border-color)]">
+            <div className="flex items-center gap-2">
+               {run.tool_name === 'web_search' ? <Globe size={14} className="text-blue-400" /> : <Code size={14} className="text-emerald-400" />}
+               <span className="font-medium text-[var(--text-primary)]">{label}</span>
+            </div>
+            {isRunning && <Loader2 size={14} className="animate-spin text-blue-400" />}
+            {isError && <span className="text-xs text-red-500">{t('workspace.toolFailed')}</span>}
+         </div>
+         {run.tool_input && Object.keys(run.tool_input).length > 0 && (
+            <pre className="px-4 py-2 text-xs font-mono text-[var(--text-secondary)] border-b border-[var(--border-color)] overflow-x-auto">
+               {JSON.stringify(run.tool_input, null, 2)}
+            </pre>
+         )}
+         {run.tool_output && (
+            <pre className={cn(
+               'px-4 py-3 text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto',
+               isDarkMode ? 'bg-[#0F172A] text-slate-300' : 'bg-slate-50 text-slate-700'
+            )}>
+               {run.tool_output}
+            </pre>
+         )}
+      </div>
+   );
 }
 
 function ToolExecutionBlock({ code, output, status, isDarkMode }: { code: string, output?: string, status: 'running' | 'completed', isDarkMode: boolean }) {

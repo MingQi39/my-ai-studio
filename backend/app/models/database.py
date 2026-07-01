@@ -39,6 +39,13 @@ class MessageRole(str, enum.Enum):
     system = "system"
 
 
+class SessionType(str, enum.Enum):
+    """Session type enumeration."""
+
+    chat = "chat"
+    travel = "travel"
+
+
 class AdapterType(str, enum.Enum):
     """Adapter type enumeration.
 
@@ -201,6 +208,12 @@ class Session(Base, UUIDMixin, TimestampMixin):
     )
     title: Mapped[str] = mapped_column(String(255), default="New Chat", nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    session_type: Mapped[SessionType] = mapped_column(
+        Enum(SessionType),
+        default=SessionType.chat,
+        nullable=False,
+        index=True,
+    )
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Relationships

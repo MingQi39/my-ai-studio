@@ -13,6 +13,23 @@ import { toast } from 'sonner';
 import { SystemInstructionModal } from '@/components/SystemInstructionModal';
 import { SystemInstructionResponse } from '@/services/api';
 
+export type ChatToolsState = {
+  search: boolean;
+  code: boolean;
+  function: boolean;
+  structured: boolean;
+};
+
+export const DEFAULT_CHAT_TOOLS_STATE: ChatToolsState = {
+  search: false,
+  code: false,
+  function: false,
+  structured: false,
+};
+
+/** 主工作台工具开关 */
+export const CHAT_TOOLS_AVAILABLE = true;
+
 interface ControlPanelProps {
   onModelClick: () => void;
   selectedModel: string;
@@ -27,6 +44,8 @@ interface ControlPanelProps {
   // 面板展开/收起
   isOpen?: boolean;
   togglePanel?: () => void;
+  toolsState: ChatToolsState;
+  onToolsStateChange: (state: ChatToolsState) => void;
 }
 
 export function ControlPanel({
@@ -41,18 +60,14 @@ export function ControlPanel({
   onTempSystemPromptChange,
   isOpen = true,
   togglePanel,
+  toolsState,
+  onToolsStateChange,
 }: ControlPanelProps) {
   const { t } = useTranslation();
   const [temperature, setTemperature] = useState([0.8]);
   const [topP, setTopP] = useState([0.95]);
   const [outputLength, setOutputLength] = useState(8192);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-  const [toolsState, setToolsState] = useState({
-    search: false,
-    code: true,
-    function: false,
-    structured: false
-  });
 
   // 系统提示词模态框状态
   const [isInstructionModalOpen, setIsInstructionModalOpen] = useState(false);
@@ -239,25 +254,29 @@ export function ControlPanel({
             icon={<Globe size={16} />}
             label={t('controlPanel.googleSearch')}
             checked={toolsState.search}
-            onCheckedChange={(c) => setToolsState(p => ({ ...p, search: c }))}
+            disabled={!CHAT_TOOLS_AVAILABLE}
+            onCheckedChange={(c) => onToolsStateChange({ ...toolsState, search: c })}
           />
           <ToolToggle
             icon={<Terminal size={16} />}
             label={t('controlPanel.codeExec')}
             checked={toolsState.code}
-            onCheckedChange={(c) => setToolsState(p => ({ ...p, code: c }))}
+            disabled={!CHAT_TOOLS_AVAILABLE}
+            onCheckedChange={(c) => onToolsStateChange({ ...toolsState, code: c })}
           />
           <ToolToggle
             icon={<Code size={16} />}
             label={t('controlPanel.functionCall')}
             checked={toolsState.function}
-            onCheckedChange={(c) => setToolsState(p => ({ ...p, function: c }))}
+            disabled={!CHAT_TOOLS_AVAILABLE}
+            onCheckedChange={(c) => onToolsStateChange({ ...toolsState, function: c })}
           />
           <ToolToggle
             icon={<FileJson size={16} />}
             label={t('controlPanel.structuredOutput')}
             checked={toolsState.structured}
-            onCheckedChange={(c) => setToolsState(p => ({ ...p, structured: c }))}
+            disabled={!CHAT_TOOLS_AVAILABLE}
+            onCheckedChange={(c) => onToolsStateChange({ ...toolsState, structured: c })}
           />
         </div>
 
@@ -315,14 +334,34 @@ export function ControlPanel({
   );
 }
 
-function ToolToggle({ icon, label, checked, onCheckedChange }: { icon: React.ReactNode, label: string, checked: boolean, onCheckedChange: (checked: boolean) => void }) {
+export function ToolToggle({
+  icon,
+  label,
+  checked,
+  disabled = false,
+  onCheckedChange,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
   return (
-    <div className="flex items-center justify-between group cursor-pointer" onClick={() => onCheckedChange(!checked)}>
+    <div
+      className={`flex items-center justify-between group ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+      onClick={() => !disabled && onCheckedChange(!checked)}
+    >
       <div className="flex items-center gap-3">
         <div className={`transition-colors ${checked ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'}`}>{icon}</div>
         <span className={`text-sm transition-colors ${checked ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'}`}>{label}</span>
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} className="data-[state=checked]:bg-blue-600" />
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+        className="data-[state=checked]:bg-blue-600"
+      />
     </div>
   );
 }

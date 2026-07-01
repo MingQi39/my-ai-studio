@@ -12,7 +12,7 @@ from sqlalchemy import select, and_, desc, func
 from sqlalchemy.orm import selectinload
 
 from .base import BaseService
-from app.models.database import Session, SessionConfig, Message, MessageAttachment
+from app.models.database import Session, SessionConfig, Message, MessageAttachment, SessionType
 from app.models.schemas import (
     SessionCreate,
     SessionUpdate,
@@ -54,6 +54,7 @@ class SessionService(BaseService):
             user_id=str(user_id),  # 将 UUID 转换为字符串
             title=data.title or "New Chat",
             description=data.description,
+            session_type=data.session_type,
         )
         self.db.add(session)
         await self.db.flush()
@@ -109,7 +110,8 @@ class SessionService(BaseService):
         self,
         user_id: UUID,
         params: PaginationParams,
-        include_archived: bool = False
+        include_archived: bool = False,
+        session_type: SessionType | None = SessionType.chat,
     ):
         """列出会话
 
@@ -117,6 +119,7 @@ class SessionService(BaseService):
             user_id: 用户 ID
             params: 分页参数
             include_archived: 是否包含已归档会话
+            session_type: 会话类型过滤；None 表示不过滤
 
         Returns:
             分页响应
@@ -125,6 +128,8 @@ class SessionService(BaseService):
         conditions = [Session.user_id == str(user_id)]
         if not include_archived:
             conditions.append(Session.is_archived == False)
+        if session_type is not None:
+            conditions.append(Session.session_type == session_type)
 
         # 计数查询
         count_stmt = select(Session).where(and_(*conditions))
@@ -349,6 +354,7 @@ class SessionService(BaseService):
             content=data.content,
             thinking_content=data.thinking_content,
             tokens_used=data.token_count,
+            tool_calls=data.tool_calls,
         )
         self.db.add(message)
 

@@ -59,8 +59,6 @@
     "noSessions": "아직 대화가 없습니다",
     "untitledSession": "제목 없는 세션",
     "messageCount": "{{count}}건의 메시지",
-    "batchJobs": "배치 작업",
-    "evaluation": "평가",
     "settings": "설정",
     "lightMode": "라이트 모드",
     "darkMode": "다크 모드",

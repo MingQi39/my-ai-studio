@@ -142,33 +142,45 @@ class StreamBuffer:
             self._error = chunk["error"]
 
     def _merge_tool_call(self, tool_call: dict) -> None:
-        """合并工具调用
+        """合并工具调用（流式分片按 index 聚合，避免 null id 误合并）"""
+        tool_call = dict(tool_call)
+        index = tool_call.get("index", len(self._tool_calls))
 
-        流式响应中工具调用可能分多次返回，需要合并。
-        """
-        tool_id = tool_call.get("id")
-        index = tool_call.get("index", 0)
-
-        # 查找已存在的工具调用
         existing = None
         for tc in self._tool_calls:
-            if tc.get("id") == tool_id or tc.get("index") == index:
+            if tc.get("index") == index:
                 existing = tc
                 break
 
-        if existing:
-            # 合并函数参数
-            if "function" in tool_call:
-                if "function" not in existing:
-                    existing["function"] = {}
-                func = tool_call["function"]
-                if "name" in func:
-                    existing["function"]["name"] = func["name"]
-                if "arguments" in func:
-                    existing["function"]["arguments"] = existing["function"].get("arguments", "") + func["arguments"]
-        else:
-            # 新的工具调用
-            self._tool_calls.append(tool_call)
+        incoming_func = tool_call.get("function") or {}
+        if not isinstance(incoming_func, dict):
+            incoming_func = dict(incoming_func) if hasattr(incoming_func, "items") else {}
+
+        if existing is None:
+            new_tc: dict = {
+                "index": index,
+                "id": tool_call.get("id"),
+                "type": tool_call.get("type") or "function",
+                "function": {},
+            }
+            if incoming_func.get("name"):
+                new_tc["function"]["name"] = incoming_func["name"]
+            if incoming_func.get("arguments"):
+                new_tc["function"]["arguments"] = incoming_func["arguments"]
+            self._tool_calls.append(new_tc)
+            return
+
+        if tool_call.get("id") and not existing.get("id"):
+            existing["id"] = tool_call["id"]
+
+        if "function" not in existing:
+            existing["function"] = {}
+        if incoming_func.get("name"):
+            existing["function"]["name"] = incoming_func["name"]
+        if incoming_func.get("arguments"):
+            existing["function"]["arguments"] = (
+                existing["function"].get("arguments", "") + incoming_func["arguments"]
+            )
 
     def get_content(self) -> str:
         """获取聚合的文本内容

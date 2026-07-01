@@ -1,11 +1,47 @@
 
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
+import net from 'node:net';
 import path from 'path';
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
+function isPortOpen(port: number, host = '127.0.0.1', timeoutMs = 400): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ port, host });
+    const finish = (open: boolean) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(open);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
+
+async function resolveDevApiProxyTarget(): Promise<string> {
+  if (process.env.VITE_DEV_PROXY_TARGET) {
+    return process.env.VITE_DEV_PROXY_TARGET;
+  }
+
+  if (await isPortOpen(10011)) {
+    return 'http://127.0.0.1:10011';
+  }
+
+  if (await isPortOpen(8080)) {
+    return 'http://127.0.0.1:8080';
+  }
+
+  return 'http://127.0.0.1:10011';
+}
+
+export default defineConfig(async () => {
+  const devApiProxyTarget = await resolveDevApiProxyTarget();
+
+  return {
+    plugins: [react()],
+    resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
     alias: {
       'vaul@1.1.2': 'vaul',
@@ -48,14 +84,21 @@ export default defineConfig({
       '@radix-ui/react-accordion@1.2.3': '@radix-ui/react-accordion',
       '@': path.resolve(__dirname, './src'),
     },
-  },
-  build: {
-    target: 'esnext',
-    outDir: 'build',
-  },
-  server: {
-    host: '0.0.0.0',
-    port: 11010,
-    open: true,
-  },
+    },
+    build: {
+      target: 'esnext',
+      outDir: 'build',
+    },
+    server: {
+      host: '0.0.0.0',
+      port: 11010,
+      open: true,
+      proxy: {
+        '/api': {
+          target: devApiProxyTarget,
+          changeOrigin: true,
+        },
+      },
+    },
+  };
 });

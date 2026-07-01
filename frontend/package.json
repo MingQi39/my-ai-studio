@@ -45,12 +45,14 @@
     "react-i18next": "^17.0.8",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^2.1.7",
+    "react-router-dom": "^7.18.1",
     "react-syntax-highlighter": "^16.1.0",
     "recharts": "^2.15.2",
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.3",
     "tailwind-merge": "*",
-    "vaul": "^1.1.2"
+    "vaul": "^1.1.2",
+    "zustand": "^4.5.7"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
