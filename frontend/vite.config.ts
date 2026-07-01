@@ -1,6 +1,7 @@
 
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
+import { codeInspectorPlugin } from 'code-inspector-plugin';
 import net from 'node:net';
 import path from 'path';
 
@@ -36,11 +37,17 @@ async function resolveDevApiProxyTarget(): Promise<string> {
   return 'http://127.0.0.1:10011';
 }
 
-export default defineConfig(async () => {
+export default defineConfig(async ({ command }) => {
   const devApiProxyTarget = await resolveDevApiProxyTarget();
 
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      command === 'serve' &&
+        codeInspectorPlugin({
+          bundler: 'vite',
+        }),
+    ].filter(Boolean),
     resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
     alias: {
