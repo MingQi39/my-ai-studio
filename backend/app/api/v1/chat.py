@@ -5,12 +5,13 @@
 """
 import asyncio
 import json
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from app.core.adapters.types import ChatCompletionChunk
 from app.core.exceptions import LLMException
 from app.core.stream_state import stream_state_manager
 from app.dependencies import get_current_user_auth, get_chat_service, get_session_service
@@ -33,7 +34,7 @@ async def _stream_chat_events(
     retry: bool = False,
 ) -> AsyncIterator[str]:
     """将 chat/retry 生成器转为 SSE；客户端断开后生成任务继续在后台运行。"""
-    queue: asyncio.Queue[tuple[str, dict | None]] = asyncio.Queue(maxsize=512)
+    queue: asyncio.Queue[tuple[str, ChatCompletionChunk | dict[str, Any] | None]] = asyncio.Queue(maxsize=512)
 
     async def produce() -> None:
         try:
@@ -43,8 +44,7 @@ async def _stream_chat_events(
                 else chat_service.chat(session_id, user_id, request)
             )
             async for chunk in stream:
-                chunk_data = chunk.dict() if hasattr(chunk, "dict") else chunk
-                await queue.put(("chunk", chunk_data))
+                await queue.put(("chunk", chunk))
             await queue.put(("done", None))
         except LLMException as e:
             error_data = {

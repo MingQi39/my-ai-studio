@@ -91,7 +91,7 @@ export interface AuthResponse {
 }
 
 // 适配器类型
-export type AdapterType = 'official' | 'openrouter' | 'ollama' | 'vllm' | 'omp';
+export type AdapterType = 'official' | 'openrouter' | 'ollama' | 'vllm';
 
 // 官方提供商
 export type OfficialProvider = 'deepseek' | 'qwen' | 'gemini' | 'openai' | 'anthropic';
@@ -374,31 +374,6 @@ export async function getAdapterTypes(): Promise<Record<string, unknown>> {
 // ============================================================================
 // 内置模型目录（后端读取本机配置后返回的 OpenAI 兼容模型清单）
 // ============================================================================
-
-export interface BuiltinModelEntry {
-  id: string;
-  name: string;
-}
-
-export interface BuiltinProviderEntry {
-  id: string;
-  base_url: string;
-  api_key_env: string | null;
-  api_key_available: boolean;
-  models: BuiltinModelEntry[];
-}
-
-export interface BuiltinModelCatalog {
-  available: boolean;
-  path: string;
-  reason?: string;
-  providers: BuiltinProviderEntry[];
-}
-
-/** 拉取后端预置的可用模型清单。 */
-export async function getBuiltinModelCatalog(): Promise<BuiltinModelCatalog> {
-  return request<BuiltinModelCatalog>('/models/omp/catalog');
-}
 
 // ============================================================================
 // 会话管理 API

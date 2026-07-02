@@ -56,7 +56,6 @@ class AdapterType(str, enum.Enum):
     openrouter = "openrouter"  # OpenRouter integration
     ollama = "ollama"          # Local Ollama deployment
     vllm = "vllm"              # Local vLLM deployment
-    omp = "omp"                # OMP / One Hub OpenAI-compatible gateway from local ~/.omp config
 
 
 class OfficialProvider(str, enum.Enum):

@@ -1,0 +1,10 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
+  "python.analysis.diagnosticMode": "workspace",
+  "python.terminal.activateEnvironment": true,
+  "basedpyright.analysis.extraPaths": ["${workspaceFolder}/backend"],
+  "basedpyright.analysis.venvPath": "${workspaceFolder}/backend",
+  "basedpyright.analysis.venv": ".venv",
+  "basedpyright.analysis.diagnosticMode": "workspace"
+}

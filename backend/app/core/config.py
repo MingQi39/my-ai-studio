@@ -22,7 +22,6 @@ class AdapterType(str, Enum):
     OPENROUTER = "openrouter"  # OpenRouter 集成
     OLLAMA = "ollama"          # Ollama 本地
     VLLM = "vllm"              # vLLM 本地
-    OMP = "omp"                # OMP / One Hub OpenAI-兼容网关（基于本机 ~/.omp 配置）
 
 
 class OfficialProvider(str, Enum):
@@ -104,14 +103,21 @@ class ConfigLoader:
 
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
-                self._config = yaml.safe_load(f)
+                loaded = yaml.safe_load(f)
         except yaml.YAMLError as e:
             raise ConfigurationError(
                 config_key="config_file",
                 reason=f"Invalid YAML format: {e}"
             )
 
-        return self._config
+        if not isinstance(loaded, dict):
+            raise ConfigurationError(
+                config_key="config_file",
+                reason="Configuration file must contain a YAML mapping"
+            )
+
+        self._config = loaded
+        return loaded
 
     def reload(self) -> dict:
         """重新加载配置文件"""

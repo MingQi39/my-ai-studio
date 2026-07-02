@@ -7,7 +7,7 @@ OpenAI 兼容适配器基类
 
 from typing import AsyncIterator, Any
 
-from openai import AsyncOpenAI, APIError, AuthenticationError as OpenAIAuthError
+from openai import AsyncOpenAI, APIStatusError, AuthenticationError as OpenAIAuthError
 
 from ..base import BaseLLMAdapter
 from ..types import (
@@ -119,9 +119,10 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         print(f"\n{'='*80}\nDEBUG: Messages sent to API:\n", flush=True)
         for i, msg in enumerate(converted):
             print(f"Message {i}: role={msg.get('role')}, content_type={type(msg.get('content'))}", flush=True)
-            if isinstance(msg.get('content'), list):
-                print(f"  Content blocks: {len(msg.get('content'))} items", flush=True)
-                for j, block in enumerate(msg.get('content')):
+            content = msg.get('content')
+            if isinstance(content, list):
+                print(f"  Content blocks: {len(content)} items", flush=True)
+                for j, block in enumerate(content):
                     if isinstance(block, dict):
                         block_type = block.get('type')
                         print(f"    Block {j}: type={block_type}", flush=True)
@@ -215,15 +216,13 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         if isinstance(error, OpenAIAuthError):
             return AuthenticationError(provider=self.PROVIDER)
 
-        if isinstance(error, APIError):
-            status_code = getattr(error, "status_code", 500)
+        if isinstance(error, APIStatusError):
+            status_code = error.status_code
             detail = str(error)
-            if hasattr(error, "body") and error.body:
+            if error.body:
                 detail = str(error.body)
             if status_code == 429:
-                retry_after = 60
-                if hasattr(error, "response") and error.response:
-                    retry_after = int(error.response.headers.get("Retry-After", 60))
+                retry_after = int(error.response.headers.get("Retry-After", 60))
                 return RateLimitError(retry_after=retry_after)
             if status_code == 402:
                 return InsufficientBalanceError(provider=self.PROVIDER)

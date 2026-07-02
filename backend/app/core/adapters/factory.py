@@ -6,18 +6,13 @@
 
 from __future__ import annotations
 
-import os
-import pathlib
 from typing import Any
-
-import yaml
 
 from .base import BaseLLMAdapter
 from .official import DeepSeekAdapter, QwenAdapter, OpenAICompatibleAdapter
 from .openrouter import OpenRouterAdapter
 from .ollama import OllamaAdapter
 from .vllm import VLLMAdapter
-from .omp import OmpAdapter
 from ..config import (
     AdapterType,
     OfficialProvider,
@@ -25,45 +20,6 @@ from ..config import (
     get_config_loader,
 )
 from ..exceptions import ConfigurationError
-
-
-_OMP_MODELS_FILE = pathlib.Path.home() / ".omp" / "agent" / "models.yml"
-
-
-def _resolve_omp_api_key(base_url: str) -> str | None:
-    """从本机 ~/.omp/agent/models.yml 解析与 base_url 匹配的 apiKey。
-
-    omp 的 apiKey 字段约定写环境变量名，本函数：
-    1) 读取 yml；
-    2) 找 baseUrl == base_url 的 provider；
-    3) 用其 apiKey 作为环境变量名读取实际 key；
-    若文件不存在 / 不匹配 / 环境变量未设置，返回 None。
-    """
-    if not _OMP_MODELS_FILE.exists():
-        return None
-    try:
-        with _OMP_MODELS_FILE.open("r", encoding="utf-8") as f:
-            doc = yaml.safe_load(f) or {}
-    except yaml.YAMLError:
-        return None
-    providers = doc.get("providers") or {}
-    if not isinstance(providers, dict):
-        return None
-    target = base_url.rstrip("/")
-    for spec in providers.values():
-        if not isinstance(spec, dict):
-            continue
-        if str(spec.get("baseUrl", "")).rstrip("/") != target:
-            continue
-        api_spec = spec.get("apiKey")
-        if not api_spec or not isinstance(api_spec, str):
-            return None
-        # 环境变量名约定：纯大写下划线
-        if api_spec.replace("_", "").isalnum() and api_spec.isupper():
-            return os.getenv(api_spec)
-        # 也兼容直接写 key 的场景
-        return api_spec
-    return None
 
 
 class LLMAdapterFactory:
@@ -86,7 +42,6 @@ class LLMAdapterFactory:
         AdapterType.OPENROUTER.value: OpenRouterAdapter,
         AdapterType.OLLAMA.value: OllamaAdapter,
         AdapterType.VLLM.value: VLLMAdapter,
-        AdapterType.OMP.value: OmpAdapter,
     }
 
     def __init__(self, config_loader: ConfigLoader | None = None):
@@ -233,37 +188,6 @@ class LLMAdapterFactory:
             **kwargs,
         )
 
-    def create_omp(
-        self,
-        model_id: str,
-        **kwargs: Any,
-    ) -> OmpAdapter:
-        """创建 OMP / One Hub OpenAI-兼容适配器
-
-        Args:
-            model_id: 模型 ID（应当存在于 ~/.omp/agent/models.yml）
-            **kwargs: 必须传入 base_url；api_key 可省略，缺失时从本机
-                      ~/.omp/agent/models.yml 中匹配 base_url 的 provider
-                      解析其 apiKey 字段（环境变量名）后从环境变量读取。
-        """
-        api_key = kwargs.pop("api_key", "") or ""
-        base_url = kwargs.pop("base_url", None)
-        if not base_url:
-            raise ConfigurationError(
-                config_key="base_url",
-                reason="OMP adapter requires base_url from ModelConfig",
-            )
-
-        if not api_key:
-            api_key = _resolve_omp_api_key(base_url) or ""
-
-        return OmpAdapter(
-            api_key=api_key,
-            base_url=base_url,
-            model_id=model_id,
-            timeout=kwargs.pop("timeout", 120),
-        )
-
     def create(
         self,
         adapter_type: str | AdapterType,
@@ -300,8 +224,6 @@ class LLMAdapterFactory:
             return self.create_ollama(model_id, **kwargs)
         elif type_name == AdapterType.VLLM.value:
             return self.create_vllm(model_id, **kwargs)
-        elif type_name == AdapterType.OMP.value:
-            return self.create_omp(model_id, **kwargs)
         else:
             raise ConfigurationError(
                 config_key="adapter_type",

@@ -91,8 +91,11 @@ def configure_logging_middleware(app) -> None:
     app.add_middleware(RequestLoggingMiddleware)
 
 
-async def llm_exception_handler(request: Request, exc: LLMException) -> JSONResponse:
+async def llm_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """LLM 异常处理器"""
+    if not isinstance(exc, LLMException):
+        raise exc
+
     logger.error(
         f"LLM Exception: {exc.error_code}",
         extra={

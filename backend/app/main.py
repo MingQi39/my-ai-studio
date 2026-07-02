@@ -3,6 +3,7 @@ FastAPI 应用入口
 
 初始化 FastAPI 应用，配置中间件、路由和异常处理器
 """
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone

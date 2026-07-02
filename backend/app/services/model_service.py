@@ -17,9 +17,9 @@ from app.core import (
     BaseLLMAdapter,
     AdapterType,
     OfficialProvider,
-    ModelInfo,
     ConfigurationError,
 )
+from app.core.adapters.types import ModelInfo
 from app.models.database import ModelConfig
 from app.models.schemas import ModelConfigCreate, ModelConfigUpdate
 
@@ -545,6 +545,11 @@ class ModelService(BaseService):
 
         # 根据适配器类型创建
         if adapter_type == AdapterType.OFFICIAL:
+            if not config.provider:
+                raise ConfigurationError(
+                    config_key="provider",
+                    reason="Provider is required for OFFICIAL adapter type"
+                )
             return adapter_factory.create_official(
                 provider=config.provider,
                 model_id=config.model_id,
@@ -565,12 +570,6 @@ class ModelService(BaseService):
             return adapter_factory.create_vllm(
                 model_id=config.model_id,
                 base_url=config.base_url or "http://localhost:8000/v1",
-            )
-        elif adapter_type == AdapterType.OMP:
-            return adapter_factory.create_omp(
-                model_id=config.model_id,
-                api_key=api_key,
-                base_url=config.base_url,
             )
         else:
             raise ValueError(f"Unsupported adapter type: {adapter_type}")

@@ -17,7 +17,6 @@ from .official import OpenAICompatibleAdapter, DeepSeekAdapter, QwenAdapter
 from .openrouter import OpenRouterAdapter
 from .ollama import OllamaAdapter
 from .vllm import VLLMAdapter
-from .omp import OmpAdapter
 
 __all__ = [
     # 基类
@@ -42,5 +41,4 @@ __all__ = [
     # 本地适配器
     "OllamaAdapter",
     "VLLMAdapter",
-    "OmpAdapter",
 ]
