@@ -46,6 +46,12 @@ from .config import (
 )
 
 # 流式响应工具
+from .stream_state import (
+    StreamState,
+    StreamStateManager,
+    stream_state_manager,
+)
+
 from .streaming import (
     SSEFormatter,
     StreamBuffer,

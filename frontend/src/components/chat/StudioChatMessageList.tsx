@@ -7,12 +7,16 @@ interface StudioChatMessageListProps {
   messages: StudioChatMessage[];
   isDarkMode: boolean;
   scrollSentinelRef: RefObject<HTMLDivElement | null>;
+  onRecoveryRetry?: () => void;
+  isRecoveryRetrying?: boolean;
 }
 
 export function StudioChatMessageList({
   messages,
   isDarkMode,
   scrollSentinelRef,
+  onRecoveryRetry,
+  isRecoveryRetrying = false,
 }: StudioChatMessageListProps) {
   return (
     <div className="max-w-[900px] mx-auto py-10 px-6 flex flex-col gap-10">
@@ -50,6 +54,9 @@ export function StudioChatMessageList({
               tool={msg.tool}
               content={msg.content}
               isDarkMode={isDarkMode}
+              recoveryPrompt={msg.recoveryPrompt}
+              onRecoveryRetry={msg.recoveryPrompt ? onRecoveryRetry : undefined}
+              isRecoveryRetrying={isRecoveryRetrying}
             />
           )}
         </div>

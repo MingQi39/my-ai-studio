@@ -170,6 +170,7 @@ class MessageCreate(BaseModel):
     token_count: int | None = None
     file_ids: list[UUID] | None = None
     tool_calls: list[dict[str, Any]] | None = None
+    is_complete: bool = True
 
 
 class ChatToolsConfig(BaseModel):
@@ -195,8 +196,10 @@ class MessageResponse(BaseSchema):
     model_used: str | None = None
     provider_used: str | None = None
     tool_calls: list[dict[str, Any]] | None = None
+    is_complete: bool = True
     created_at: datetime
     attachments: list["FileResponse"] | None = None
+    tool_executions: list["ToolExecutionResponse"] | None = None
 
 
 # =============================================================================
@@ -224,6 +227,7 @@ class SessionConfigUpdate(BaseModel):
     max_tokens: int | None = None
     top_p: int | None = Field(default=None, ge=0, le=100)
     system_prompt: str | None = None
+    tools_config: ChatToolsConfig | None = None
 
 
 class SessionConfigResponse(BaseSchema):
@@ -236,6 +240,7 @@ class SessionConfigResponse(BaseSchema):
     max_tokens: int | None = None
     top_p: int | None = None
     system_prompt: str | None = None
+    tools_config: ChatToolsConfig | None = None
 
     @field_validator('temperature', mode='before')
     @classmethod
@@ -243,6 +248,17 @@ class SessionConfigResponse(BaseSchema):
         if isinstance(v, float):
             return int(v)  # Handle legacy float data
         return v
+
+    @field_validator('tools_config', mode='before')
+    @classmethod
+    def parse_tools_config(cls, v: Any) -> ChatToolsConfig | None:
+        if v is None:
+            return None
+        if isinstance(v, ChatToolsConfig):
+            return v
+        if isinstance(v, dict):
+            return ChatToolsConfig(**v)
+        return None
 
 
 # =============================================================================
@@ -409,8 +425,7 @@ class ChatRequest(BaseModel):
     system_prompt: str | None = None  # 临时系统指令（覆盖会话配置）
     model_config_id: UUID | None = None  # 指定使用的模型配置 ID
     tools_config: ChatToolsConfig | None = None  # 主聊天工具开关
-
-
+    skip_persist_user_message: bool = False  # 重试未完成回复时使用
 
 class ChatStreamChunk(BaseModel):
     """Schema for chat stream chunk."""

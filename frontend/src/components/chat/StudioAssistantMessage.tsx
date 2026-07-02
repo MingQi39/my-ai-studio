@@ -5,6 +5,7 @@ import { ChatToolRunBlock, type ChatToolRun } from './ChatToolRunBlock';
 import { GeneratingIndicator } from './GeneratingIndicator';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ToolExecutionBlock } from './ToolExecutionBlock';
+import { StreamRecoveryPrompt } from './StreamRecoveryPrompt';
 
 export type StudioAssistantMessageProps = {
   thinking?: string;
@@ -18,6 +19,9 @@ export type StudioAssistantMessageProps = {
   };
   content?: string;
   isDarkMode?: boolean;
+  recoveryPrompt?: 'interrupted';
+  onRecoveryRetry?: () => void;
+  isRecoveryRetrying?: boolean;
 };
 
 export function StudioAssistantMessage({
@@ -27,6 +31,9 @@ export function StudioAssistantMessage({
   tool,
   content,
   isDarkMode = false,
+  recoveryPrompt,
+  onRecoveryRetry,
+  isRecoveryRetrying = false,
 }: StudioAssistantMessageProps) {
   const { t } = useTranslation();
 
@@ -55,6 +62,14 @@ export function StudioAssistantMessage({
 
       {!content && isThinking && !thinking && (
         <GeneratingIndicator layout="spinner" label={t('workspace.thinking')} />
+      )}
+
+      {recoveryPrompt === 'interrupted' && onRecoveryRetry && (
+        <StreamRecoveryPrompt
+          onRetry={onRecoveryRetry}
+          isRetrying={isRecoveryRetrying}
+          isDarkMode={isDarkMode}
+        />
       )}
     </AssistantMessageShell>
   );

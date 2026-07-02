@@ -1,4 +1,4 @@
-import { Bot } from 'lucide-react';
+import { Bot, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/components/ui/utils';
 
@@ -10,6 +10,15 @@ interface ActiveModelBadgeProps {
   variant?: 'default' | 'compact';
 }
 
+function parseModelDisplay(model: string): { primary: string; secondary?: string } {
+  const sep = model.indexOf(' - ');
+  if (sep === -1) return { primary: model };
+  return {
+    primary: model.slice(0, sep),
+    secondary: model.slice(sep + 3),
+  };
+}
+
 export function ActiveModelBadge({
   model,
   onClick,
@@ -19,35 +28,64 @@ export function ActiveModelBadge({
   const { t } = useTranslation();
   const displayName = model || t('workspace.noModel');
   const isConfigured = Boolean(model);
+  const { primary, secondary } = isConfigured ? parseModelDisplay(model) : { primary: displayName };
 
-  const content = (
-    <>
-      <Bot
-        size={variant === 'compact' ? 14 : 13}
-        className={cn(
-          'flex-shrink-0',
-          isConfigured ? 'text-blue-500' : 'text-[var(--text-placeholder)]',
+  const content =
+    variant === 'compact' ? (
+      <>
+        <Bot
+          size={14}
+          className={cn(
+            'flex-shrink-0',
+            isConfigured ? 'text-blue-500' : 'text-[var(--text-placeholder)]',
+          )}
+        />
+        <span
+          className={cn(
+            'truncate font-medium',
+            isConfigured ? 'text-[var(--text-primary)]' : 'text-[var(--text-placeholder)]',
+          )}
+          title={displayName}
+        >
+          {secondary ?? primary}
+        </span>
+      </>
+    ) : (
+      <>
+        <Bot
+          size={15}
+          className={cn(
+            'flex-shrink-0',
+            isConfigured ? 'text-blue-500' : 'text-[var(--text-placeholder)]',
+          )}
+        />
+        <span
+          className={cn(
+            'truncate text-sm font-medium',
+            isConfigured ? 'text-[var(--text-primary)]' : 'text-[var(--text-placeholder)]',
+          )}
+          title={displayName}
+        >
+          {primary}
+        </span>
+        {onClick && (
+          <ChevronDown
+            size={14}
+            className="flex-shrink-0 text-[var(--text-secondary)] opacity-70"
+          />
         )}
-      />
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex-shrink-0">
-        {t('workspace.activeModelLabel')}
-      </span>
-      <span
-        className={cn(
-          'truncate font-mono',
-          isConfigured ? 'text-[var(--text-primary)]' : 'text-[var(--text-placeholder)]',
-        )}
-        title={displayName}
-      >
-        {displayName}
-      </span>
-    </>
-  );
+      </>
+    );
 
   const baseClass = cn(
-    'inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-hover)] transition-colors max-w-[220px] min-w-0',
-    variant === 'compact' ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-xs',
-    onClick && 'cursor-pointer hover:border-blue-500/40 hover:bg-[var(--bg-card)]',
+    'inline-flex items-center min-w-0 transition-colors',
+    variant === 'compact'
+      ? 'gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-hover)] px-2.5 py-1 text-[11px] max-w-[180px] sm:max-w-[220px]'
+      : 'gap-1.5 rounded-md px-2 py-1.5 max-w-[200px]',
+    onClick &&
+      (variant === 'compact'
+        ? 'cursor-pointer hover:border-blue-500/30 hover:bg-[var(--bg-card)]'
+        : 'cursor-pointer text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'),
     className,
   );
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Wifi, RefreshCw, Terminal, Globe, Bot, Sparkles, Server, Cloud, Layers, AlertCircle, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -14,6 +14,7 @@ import {
   type ModelConfigCreate,
   type ModelConfigResponse,
   ApiError,
+  getProviderIdFromConfig,
 } from '@/services/api';
 
 interface ConnectionModalProps {
@@ -156,16 +157,30 @@ export function ConnectionModal({ isOpen, onClose, isDarkMode, onConfigSave, sel
 
   }, [isOpen]);
 
-  // When externalProviderId is provided, auto-select it
+  const prevIsOpenRef = useRef(false);
+
+  // Sync provider selection each time the modal opens
   useEffect(() => {
-    if (externalProviderId && isOpen) {
-      const provider = PROVIDERS.find(p => p.id === externalProviderId);
-      if (provider) {
-        setSelectedCategory(provider.category);
-        setSelectedProviderId(externalProviderId);
+    const justOpened = isOpen && !prevIsOpenRef.current;
+    prevIsOpenRef.current = isOpen;
+    if (!justOpened) return;
+
+    let providerId = externalProviderId;
+    if (!providerId) {
+      const defaultConfig = Object.values(savedConfigs).find((config) => config.is_default);
+      if (defaultConfig) {
+        providerId = getProviderIdFromConfig(defaultConfig);
       }
     }
-  }, [externalProviderId, isOpen]);
+
+    if (providerId) {
+      const provider = PROVIDERS.find((p) => p.id === providerId);
+      if (provider) {
+        setSelectedCategory(provider.category);
+        setSelectedProviderId(providerId);
+      }
+    }
+  }, [externalProviderId, isOpen, savedConfigs]);
 
   const loadSavedConfigs = async () => {
     setIsLoadingConfigs(true);

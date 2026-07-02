@@ -2,20 +2,38 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import type { ChatToolsState } from '@/components/ControlPanel';
+import { applyStudioChatStreamChunk } from '@/hooks/studioChat/applyStreamChunk';
 import {
   createStudioAssistantPlaceholder,
   useStudioChatStream,
 } from '@/hooks/useStudioChatStream';
+import {
+  clearRecoveryPrompts,
+  getLastMessageFingerprint,
+  hasRecoverableAssistantProgress,
+  looksLikeInProgressGeneration,
+  mapApiMessagesToStudio,
+  markStreamRecoveryPrompt,
+  needsStreamRecovery,
+} from '@/hooks/studioChat/mapApiMessages';
+import { pollGenerationFromDb } from '@/hooks/studioChat/pollGeneration';
+import {
+  clearAssistantThinkingState,
+  prepareRecoveringAssistantUI,
+} from '@/hooks/studioChat/prepareRecoveringUI';
 import type { StudioChatMessage } from '@/hooks/studioChat/types';
 import {
   createSession,
   deleteSession as apiDeleteSession,
   getSessionMessages,
+  getStreamStatus,
+  startResumeStream,
+  startRetryStreamChat,
   listSessions,
   updateSession,
   uploadFile,
   type ChatRequest,
-  type MessageResponse as ApiMessageResponse,
+  type ChatStreamChunk,
   type SessionResponse,
 } from '@/services/api';
 
@@ -85,26 +103,14 @@ export function useStudioChat({
     async (sessionId: string) => {
       try {
         const apiMessages = await getSessionMessages(sessionId, 100);
-        const localMessages: StudioChatMessage[] = apiMessages.map((msg: ApiMessageResponse) => ({
-          id: msg.id,
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-          thinking: msg.thinking_content || undefined,
-          isThinking: false,
-          images:
-            msg.attachments && msg.attachments.length > 0
-              ? msg.attachments.map((att: { id: string; url: string; name: string }) => ({
-                  id: att.id,
-                  url: att.url,
-                  name: att.name,
-                }))
-              : undefined,
-        }));
-        setMessages(localMessages.reverse());
+        const localMessages = mapApiMessagesToStudio(apiMessages);
+        setMessages(localMessages);
         setIsFirstMessage(localMessages.length === 0);
+        return localMessages;
       } catch (error) {
         console.error('Failed to load messages:', error);
         toast.error(t('workspace.loadMessagesFailed'));
+        return null;
       }
     },
     [t],
@@ -120,17 +126,375 @@ export function useStudioChat({
     }
   }, [sessionRefreshTrigger, loadSessions]);
 
-  useEffect(() => {
-    if (currentSessionId) {
-      if (skipLoadMessagesRef.current) {
-        skipLoadMessagesRef.current = false;
-      } else {
-        loadSessionMessages(currentSessionId);
+  const resumeCancelRef = useRef<(() => void) | null>(null);
+  const pollGenerationRef = useRef<{ cancel: () => void } | null>(null);
+  const sessionRecoveryGenerationRef = useRef(0);
+  const tryResumeStreamRef = useRef<
+    (sessionId: string, loadedMessages?: StudioChatMessage[], pollAutoRetry?: boolean) => Promise<void>
+  >(async () => {});
+
+  const isStreamAlreadyEndedError = (error: unknown): boolean => {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes('404') && message.toLowerCase().includes('no active stream');
+  };
+
+  const pollForGenerationUpdates = useCallback(
+    async (
+      sessionId: string,
+      snapshot: StudioChatMessage[],
+      options?: {
+        allowAutoRetry?: boolean;
+        assistantMessageId?: string | null;
+        suppressRecoveryPrompt?: boolean;
+        maxAttempts?: number;
+      },
+    ) => {
+      pollGenerationRef.current?.cancel();
+
+      let cancelled = false;
+      pollGenerationRef.current = {
+        cancel: () => {
+          cancelled = true;
+        },
+      };
+
+      setIsGenerating(true);
+      setMessages(prepareRecoveringAssistantUI(clearRecoveryPrompts(snapshot), options?.assistantMessageId));
+
+      const result = await pollGenerationFromDb({
+        sessionId,
+        onMessagesUpdate: (nextMessages) => {
+          setMessages(() => {
+            const merged = clearRecoveryPrompts(nextMessages);
+            if (!looksLikeInProgressGeneration(merged)) return merged;
+
+            const lastAssistant = [...merged].reverse().find((message) => message.role === 'assistant');
+            const assistantId = lastAssistant?.id ?? options?.assistantMessageId;
+            return prepareRecoveringAssistantUI(merged, assistantId);
+          });
+        },
+        isCancelled: () => cancelled,
+        maxAttempts: options?.maxAttempts,
+      });
+
+      pollGenerationRef.current = null;
+      if (cancelled) return;
+
+      if (result === 'resumed') {
+        await tryResumeStreamRef.current(sessionId, snapshot, false);
+        return;
       }
-    } else {
+
+      if (result === 'completed') {
+        setIsGenerating(false);
+        return;
+      }
+
+      const messages = (await loadSessionMessages(sessionId)) ?? snapshot;
+      if (!looksLikeInProgressGeneration(messages)) {
+        setIsGenerating(false);
+        return;
+      }
+
+      if (options?.allowAutoRetry) {
+        await tryResumeStreamRef.current(sessionId, messages, false);
+        return;
+      }
+
+      if (options?.suppressRecoveryPrompt) {
+        setIsGenerating(false);
+        return;
+      }
+
+      setMessages((prev) => markStreamRecoveryPrompt(clearAssistantThinkingState(prev.length ? prev : messages)));
+      setIsGenerating(false);
+    },
+    [loadSessionMessages],
+  );
+
+  const handleResumeStreamError = useCallback(
+    async (sessionId: string, aiMsgId: string | null, error: unknown, snapshot?: StudioChatMessage[]) => {
+      setIsGenerating(false);
+
+      if (aiMsgId) {
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === aiMsgId ? { ...message, isThinking: false } : message,
+          ),
+        );
+      }
+
+      const messages = snapshot ?? (await loadSessionMessages(sessionId));
+      if (!messages || !looksLikeInProgressGeneration(messages)) return;
+
+      if (isStreamAlreadyEndedError(error)) {
+        toast.info(t('workspace.streamResumeEnded'));
+      } else {
+        console.error('Resume stream error:', error);
+      }
+
+      await pollForGenerationUpdates(sessionId, messages, {
+        allowAutoRetry: true,
+        assistantMessageId: aiMsgId,
+      });
+    },
+    [loadSessionMessages, pollForGenerationUpdates, t],
+  );
+
+  const resumeStreamForMessage = useCallback(
+    async (sessionId: string, aiMsgId: string, snapshot: StudioChatMessage[]) => {
+      setIsGenerating(true);
+      setMessages(prepareRecoveringAssistantUI(snapshot, aiMsgId));
+
+      const buffers = { thinking: '', content: '' };
+
+      await new Promise<void>((resolve, reject) => {
+        const { promise, cancel } = startResumeStream(
+          sessionId,
+          (chunk: ChatStreamChunk) => {
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === aiMsgId ? applyStudioChatStreamChunk(message, chunk, buffers) : message,
+              ),
+            );
+          },
+          (error) => {
+            reject(error);
+          },
+          () => {
+            setIsGenerating(false);
+            setMessages((prev) => clearAssistantThinkingState(prev));
+            loadSessions();
+            onSessionsChange?.();
+            resolve();
+          },
+        );
+
+        resumeCancelRef.current = cancel;
+        void promise.catch(reject);
+      });
+    },
+    [loadSessions, onSessionsChange],
+  );
+
+  const regenerateIncompleteResponse = useCallback(
+    async (sessionId: string, snapshot: StudioChatMessage[]) => {
+      const aiMsgId = `retry-${Date.now()}`;
+      setMessages(() => {
+        const trimmed = clearRecoveryPrompts(snapshot);
+        const last = trimmed[trimmed.length - 1];
+        const withoutDeadAssistant =
+          last?.role === 'assistant' &&
+          (last.isComplete === false || !last.content.trim())
+            ? trimmed.slice(0, -1)
+            : trimmed;
+        return [...withoutDeadAssistant, createStudioAssistantPlaceholder(aiMsgId)];
+      });
+
+      setIsGenerating(true);
+      const buffers = { thinking: '', content: '' };
+
+      await new Promise<void>((resolve, reject) => {
+        const { promise, cancel } = startRetryStreamChat(
+          sessionId,
+          {
+            stream: true,
+            enable_reasoning: enableReasoning,
+            system_prompt: systemPrompt || undefined,
+            model_config_id: modelConfigId || undefined,
+            tools_config: toolsState,
+          },
+          (chunk: ChatStreamChunk) => {
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === aiMsgId ? applyStudioChatStreamChunk(message, chunk, buffers) : message,
+              ),
+            );
+          },
+          (error) => {
+            reject(error);
+          },
+          () => {
+            resolve();
+          },
+        );
+
+        resumeCancelRef.current = cancel;
+        void promise.catch(reject);
+      });
+
+      const next = await loadSessionMessages(sessionId);
+      if (next) {
+        setMessages(next);
+      }
+      resumeCancelRef.current = null;
+    },
+    [enableReasoning, loadSessionMessages, modelConfigId, systemPrompt, toolsState],
+  );
+
+  const handleRetryStreamRecovery = useCallback(async () => {
+    if (!currentSessionId || isGenerating) return;
+
+    resumeCancelRef.current?.();
+    pollGenerationRef.current?.cancel();
+    setIsGenerating(true);
+
+    try {
+      let messages = (await loadSessionMessages(currentSessionId)) ?? [];
+      setMessages(clearAssistantThinkingState(clearRecoveryPrompts(messages)));
+
+      const status = await getStreamStatus(currentSessionId);
+      if (status.is_streaming && status.message_id) {
+        try {
+          await resumeStreamForMessage(currentSessionId, status.message_id, messages);
+          messages = (await loadSessionMessages(currentSessionId)) ?? messages;
+          if (!needsStreamRecovery(messages)) {
+            setMessages(messages);
+            return;
+          }
+        } catch (error) {
+          if (!isStreamAlreadyEndedError(error)) {
+            console.error('Resume during recovery failed:', error);
+          }
+        }
+      }
+
+      const last = messages[messages.length - 1];
+      if (hasRecoverableAssistantProgress(last)) {
+        await pollForGenerationUpdates(currentSessionId, messages, {
+          allowAutoRetry: false,
+          suppressRecoveryPrompt: true,
+          maxAttempts: 5,
+        });
+        messages = (await loadSessionMessages(currentSessionId)) ?? messages;
+        if (!needsStreamRecovery(messages)) {
+          setMessages(messages);
+          return;
+        }
+      }
+
+      if (!needsStreamRecovery(messages)) {
+        setMessages(messages);
+        return;
+      }
+
+      await regenerateIncompleteResponse(currentSessionId, messages);
+      loadSessions();
+      onSessionsChange?.();
+    } catch (error) {
+      console.error('Stream recovery failed:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(t('workspace.chatError', { message }));
+      const next = await loadSessionMessages(currentSessionId);
+      if (next) {
+        setMessages(markStreamRecoveryPrompt(clearAssistantThinkingState(next)));
+      }
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [
+    currentSessionId,
+    isGenerating,
+    loadSessionMessages,
+    loadSessions,
+    onSessionsChange,
+    pollForGenerationUpdates,
+    regenerateIncompleteResponse,
+    resumeStreamForMessage,
+    t,
+  ]);
+
+  // 刷新恢复：加载历史消息后检测活跃流并重连
+  const tryResumeStream = useCallback(
+    async (sessionId: string, loadedMessages?: StudioChatMessage[], pollAutoRetry = false) => {
+      const snapshot = loadedMessages ?? (await loadSessionMessages(sessionId));
+      if (!snapshot) return;
+
+      let aiMsgId: string | null = null;
+
+      try {
+        const status = await getStreamStatus(sessionId);
+        if (!status.is_streaming || !status.message_id) {
+          const last = snapshot[snapshot.length - 1];
+          if (hasRecoverableAssistantProgress(last) && looksLikeInProgressGeneration(snapshot)) {
+            await pollForGenerationUpdates(sessionId, snapshot, { allowAutoRetry: pollAutoRetry });
+            return;
+          }
+
+          if (needsStreamRecovery(snapshot)) {
+            setMessages(markStreamRecoveryPrompt(clearAssistantThinkingState(snapshot)));
+            setIsGenerating(false);
+          }
+          return;
+        }
+
+        aiMsgId = status.message_id;
+        setIsGenerating(true);
+        setMessages(prepareRecoveringAssistantUI(snapshot, aiMsgId));
+
+        const buffers = { thinking: '', content: '' };
+
+        const { promise, cancel } = startResumeStream(
+          sessionId,
+          (chunk: ChatStreamChunk) => {
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.id === aiMsgId
+                  ? applyStudioChatStreamChunk(message, chunk, buffers)
+                  : message,
+              ),
+            );
+          },
+          (error) => {
+            void handleResumeStreamError(sessionId, aiMsgId, error, snapshot);
+          },
+          () => {
+            setIsGenerating(false);
+            setMessages((prev) => clearAssistantThinkingState(prev));
+            loadSessions();
+            onSessionsChange?.();
+          },
+        );
+
+        resumeCancelRef.current = cancel;
+        await promise;
+      } catch (error) {
+        await handleResumeStreamError(sessionId, aiMsgId, error, snapshot);
+      }
+    },
+    [handleResumeStreamError, loadSessionMessages, loadSessions, onSessionsChange, pollForGenerationUpdates],
+  );
+
+  tryResumeStreamRef.current = tryResumeStream;
+
+  useEffect(() => {
+    if (!currentSessionId) {
       setMessages([]);
       setIsFirstMessage(true);
+      setIsGenerating(false);
+      return;
     }
+
+    if (skipLoadMessagesRef.current) {
+      skipLoadMessagesRef.current = false;
+      return;
+    }
+
+    const generation = ++sessionRecoveryGenerationRef.current;
+
+    void (async () => {
+      const messages = await loadSessionMessages(currentSessionId);
+      if (generation !== sessionRecoveryGenerationRef.current || !messages) return;
+      await tryResumeStreamRef.current(currentSessionId, messages, true);
+    })();
+
+    return () => {
+      sessionRecoveryGenerationRef.current += 1;
+      resumeCancelRef.current?.();
+      resumeCancelRef.current = null;
+      pollGenerationRef.current?.cancel();
+      pollGenerationRef.current = null;
+    };
   }, [currentSessionId, loadSessionMessages]);
 
   const handleNewSession = async () => {
@@ -296,6 +660,12 @@ export function useStudioChat({
 
   const handleStopGeneration = () => {
     cancelStream();
+    resumeCancelRef.current?.();
+    resumeCancelRef.current = null;
+    pollGenerationRef.current?.cancel();
+    pollGenerationRef.current = null;
+    setIsGenerating(false);
+    setMessages((prev) => clearAssistantThinkingState(clearRecoveryPrompts(prev)));
   };
 
   const handleAddFile = async (type: 'image' | 'file' | 'video') => {
@@ -415,5 +785,6 @@ export function useStudioChat({
     handleStopGeneration,
     handleAddFile,
     handleExportCode,
+    handleRetryStreamRecovery,
   };
 }

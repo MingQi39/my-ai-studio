@@ -17,6 +17,7 @@ from app.models.schemas import (
     SessionResponse,
     SessionUpdate,
     MessageResponse,
+    ToolExecutionResponse,
 )
 from app.services.session_service import SessionService
 
@@ -195,6 +196,23 @@ async def get_session_messages(
                     logger.warning(f"  Attachment has no file object")
         else:
             logger.info(f"Message {msg.id} has no attachments")
+
+        tool_executions_data = None
+        if hasattr(msg, 'tool_executions') and msg.tool_executions:
+            tool_executions_data = [
+                ToolExecutionResponse(
+                    id=ex.id,
+                    tool_name=ex.tool_name,
+                    tool_type=ex.tool_type,
+                    input_params=ex.input_params,
+                    output=ex.output,
+                    status=ex.status,
+                    error_message=ex.error_message,
+                    execution_time_ms=ex.execution_time_ms,
+                    created_at=ex.created_at,
+                )
+                for ex in sorted(msg.tool_executions, key=lambda item: item.created_at)
+            ]
         
         result.append(MessageResponse(
             id=msg.id,
@@ -205,8 +223,10 @@ async def get_session_messages(
             model_used=msg.model_used,
             provider_used=msg.provider_used,
             tool_calls=msg.tool_calls,
+            is_complete=getattr(msg, 'is_complete', True),
             created_at=msg.created_at,
-            attachments=attachments_data if attachments_data else None
+            attachments=attachments_data if attachments_data else None,
+            tool_executions=tool_executions_data,
         ))
     
     logger.info(f"Returning {len(result)} messages with attachments info")

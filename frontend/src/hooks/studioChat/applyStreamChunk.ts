@@ -29,14 +29,30 @@ export function applyStudioChatStreamChunk(
   if (chunk.type === 'tool_result' && chunk.tool_result) {
     const tr = chunk.tool_result;
     const runs = [...(message.toolRuns || [])];
-    const runningIdx = runs.findIndex((r) => r.tool_name === tr.tool_name && r.status === 'running');
+    const callId = typeof tr.call_id === 'string' ? tr.call_id : undefined;
+    const runningIdx = callId
+      ? runs.findIndex((r) => r.call_id === callId)
+      : runs.findIndex((r) => r.tool_name === tr.tool_name && r.status === 'running');
 
     if (tr.status === 'running') {
-      runs.push({ ...tr });
+      runs.push({
+        call_id: callId,
+        tool_name: tr.tool_name,
+        tool_type: tr.tool_type,
+        tool_input: tr.tool_input,
+        status: 'running',
+      });
     } else if (runningIdx >= 0) {
-      runs[runningIdx] = { ...runs[runningIdx], ...tr };
+      runs[runningIdx] = {
+        ...runs[runningIdx],
+        ...tr,
+        call_id: callId ?? runs[runningIdx].call_id,
+      };
     } else {
-      runs.push({ ...tr });
+      runs.push({
+        call_id: callId,
+        ...tr,
+      });
     }
 
     let tool = message.tool;

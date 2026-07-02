@@ -20,7 +20,24 @@ import {
   ModelConfigResponse,
   SystemInstructionResponse,
   ApiError,
+  getProviderIdFromConfig,
+  getModelConfigDisplayName,
+  pickActiveModelConfig,
+  setStoredActiveModelConfigId,
+  getSessionConfig,
+  updateSessionConfig,
+  type ChatToolsConfig,
 } from './services/api';
+
+function toToolsState(config: ChatToolsConfig | null | undefined): ChatToolsState {
+  if (!config) return DEFAULT_CHAT_TOOLS_STATE;
+  return {
+    search: config.search,
+    code: config.code,
+    function: config.function,
+    structured: config.structured,
+  };
+}
 
 function configMatchesProvider(config: ModelConfigResponse, providerId: string): boolean {
   if (config.adapter_type === 'official' && config.provider === providerId) return true;
@@ -124,6 +141,12 @@ export default function App() {
 
   const currentSessionId = location.pathname.match(/^\/session\/([^/]+)/)?.[1] ?? null;
 
+  const applyActiveModelConfig = useCallback((config: ModelConfigResponse) => {
+    setSelectedModel(getModelConfigDisplayName(config));
+    setSelectedModelConfigId(config.id);
+    setStoredActiveModelConfigId(config.id);
+  }, []);
+
   const loadModelConfigs = useCallback(async (autoSelect: boolean = true) => {
     try {
       const configs = await listModelConfigs();
@@ -135,8 +158,10 @@ export default function App() {
       setModelConfigs(sortedConfigs);
       setHasModelConfig(sortedConfigs.length > 0);
       if (autoSelect && sortedConfigs.length > 0) {
-        setSelectedModel(sortedConfigs[0].model_id);
-        setSelectedModelConfigId(sortedConfigs[0].id);
+        const activeConfig = pickActiveModelConfig(sortedConfigs);
+        if (activeConfig) {
+          applyActiveModelConfig(activeConfig);
+        }
       }
       return sortedConfigs;
     } catch (error) {
@@ -147,6 +172,7 @@ export default function App() {
         setCurrentUser(null);
         setSelectedModel('');
         setSelectedModelConfigId(null);
+        setStoredActiveModelConfigId(null);
         setModelConfigs([]);
         setHasModelConfig(null);
         toast.error(t('auth.sessionExpired'));
@@ -155,7 +181,7 @@ export default function App() {
       setHasModelConfig(false);
       return [];
     }
-  }, [t]);
+  }, [applyActiveModelConfig, t]);
 
   useEffect(() => {
     const token = getToken();
@@ -174,11 +200,56 @@ export default function App() {
   }, [isAuthenticated, loadModelConfigs]);
 
   useEffect(() => {
+    if (!selectedModelConfigId || modelConfigs.length === 0) return;
+    const activeConfig = modelConfigs.find((config) => config.id === selectedModelConfigId);
+    if (activeConfig) {
+      setSelectedModel(getModelConfigDisplayName(activeConfig));
+    }
+  }, [modelConfigs, selectedModelConfigId]);
+
+  useEffect(() => {
     if (hasModelConfig === false && isAuthenticated) {
       const timer = setTimeout(() => setIsConnectionModalOpen(true), 500);
       return () => clearTimeout(timer);
     }
   }, [hasModelConfig, isAuthenticated]);
+
+  useEffect(() => {
+    if (!currentSessionId || !isAuthenticated) {
+      setToolsState(DEFAULT_CHAT_TOOLS_STATE);
+      return;
+    }
+
+    let cancelled = false;
+    void getSessionConfig(currentSessionId)
+      .then((config) => {
+        if (!cancelled) {
+          setToolsState(toToolsState(config.tools_config));
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load session tools config:', error);
+        if (!cancelled) {
+          setToolsState(DEFAULT_CHAT_TOOLS_STATE);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSessionId, isAuthenticated]);
+
+  const handleToolsStateChange = useCallback(
+    (state: ChatToolsState) => {
+      setToolsState(state);
+      if (currentSessionId) {
+        void updateSessionConfig(currentSessionId, { tools_config: state }).catch((error) => {
+          console.error('Failed to save session tools config:', error);
+        });
+      }
+    },
+    [currentSessionId],
+  );
 
   const handleAuthSuccess = (user: User) => {
     setCurrentUser(user);
@@ -191,21 +262,36 @@ export default function App() {
     setCurrentUser(null);
     setSelectedModel('');
     setSelectedModelConfigId(null);
+    setStoredActiveModelConfigId(null);
     setModelConfigs([]);
     setHasModelConfig(null);
   };
 
   const handleConfigSave = (modelName: string, configId: string) => {
-    if (modelName) setSelectedModel(modelName);
-    if (configId) setSelectedModelConfigId(configId);
-    loadModelConfigs(false);
+    void loadModelConfigs(false).then((configs) => {
+      const savedConfig = configs.find((config) => config.id === configId);
+      if (savedConfig) {
+        applyActiveModelConfig(savedConfig);
+      } else if (configId) {
+        setSelectedModel(modelName);
+        setSelectedModelConfigId(configId);
+        setStoredActiveModelConfigId(configId);
+      }
+    });
     setIsConnectionModalOpen(false);
   };
 
   const openConnectionModal = useCallback((providerId?: string) => {
-    setSelectedProviderId(providerId);
+    if (providerId) {
+      setSelectedProviderId(providerId);
+    } else if (selectedModelConfigId) {
+      const activeConfig = modelConfigs.find((c) => c.id === selectedModelConfigId);
+      setSelectedProviderId(activeConfig ? getProviderIdFromConfig(activeConfig) : undefined);
+    } else {
+      setSelectedProviderId(undefined);
+    }
     setIsConnectionModalOpen(true);
-  }, []);
+  }, [selectedModelConfigId, modelConfigs]);
 
   const handleSelectProviderModel = useCallback(
     (providerId: string, displayName: string) => {
@@ -218,16 +304,15 @@ export default function App() {
         openConnectionModal(providerId);
         return;
       }
-      setSelectedModel(config.model_id);
-      setSelectedModelConfigId(config.id);
-      toast.success(t('workspace.modelSwitched', { name: config.model_id }));
+      applyActiveModelConfig(config);
+      toast.success(t('workspace.modelSwitched', { name: getModelConfigDisplayName(config) }));
     },
-    [modelConfigs, openConnectionModal, t],
+    [applyActiveModelConfig, modelConfigs, openConnectionModal, t],
   );
 
   const handleTabChange = (tab: string) => {
     if (tab === 'settings') {
-      setIsConnectionModalOpen(true);
+      openConnectionModal();
     } else if (tab === 'logout') {
       handleLogout();
     } else if (tab === 'travel-agent') {
@@ -388,7 +473,7 @@ export default function App() {
               isControlPanelOpen={isControlPanelOpen}
               toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
               toolsState={toolsState}
-              onToolsStateChange={setToolsState}
+              onToolsStateChange={handleToolsStateChange}
             />
           }
         />
@@ -411,7 +496,7 @@ export default function App() {
               isControlPanelOpen={isControlPanelOpen}
               toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
               toolsState={toolsState}
-              onToolsStateChange={setToolsState}
+              onToolsStateChange={handleToolsStateChange}
             />
           }
         />
@@ -426,7 +511,7 @@ export default function App() {
               selectedModelConfigId={selectedModelConfigId}
               isControlPanelOpen={isControlPanelOpen}
               toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
-              onOpenModelSettings={() => setIsConnectionModalOpen(true)}
+              onOpenModelSettings={() => openConnectionModal()}
             />
           }
         />
@@ -437,7 +522,7 @@ export default function App() {
         className={`transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${isControlPanelOpen && activeTab === 'history' ? 'w-[300px] opacity-100' : 'w-0 opacity-0'}`}
       >
         <ControlPanel
-          onModelClick={() => setIsConnectionModalOpen(true)}
+          onModelClick={() => openConnectionModal()}
           selectedModel={selectedModel}
           isDarkMode={isDarkMode}
           enableReasoning={enableReasoning}
@@ -449,7 +534,7 @@ export default function App() {
           isOpen={isControlPanelOpen}
           togglePanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
           toolsState={toolsState}
-          onToolsStateChange={setToolsState}
+          onToolsStateChange={handleToolsStateChange}
         />
       </div>
 

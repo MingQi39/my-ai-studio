@@ -7,6 +7,8 @@ interface UseChatAutoScrollOptions {
   bottomThresholdPx?: number;
   /** 是否启用（列表为空时可设为 false） */
   active?: boolean;
+  /** 会话切换时重置滚动跟随状态（如 sessionId） */
+  resetKey?: unknown;
 }
 
 /**
@@ -16,46 +18,98 @@ interface UseChatAutoScrollOptions {
  * - 调用 scrollToBottom() → 恢复跟随
  */
 export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}) {
-  const { deps = [], bottomThresholdPx = 48, active = true } = options;
+  const { deps = [], bottomThresholdPx = 48, active = true, resetKey } = options;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const isAtBottomRef = useRef(true);
+  const userScrolledAwayRef = useRef(false);
+  const isAutoScrollingRef = useRef(false);
 
   useEffect(() => {
-    isAtBottomRef.current = isAtBottom;
-  }, [isAtBottom]);
+    userScrolledAwayRef.current = false;
+    isAtBottomRef.current = true;
+    setIsAtBottom(true);
+  }, [resetKey]);
+
+  const checkIsAtBottom = useCallback(() => {
+    const root = scrollContainerRef.current;
+    if (!root) return true;
+    return root.scrollHeight - root.scrollTop - root.clientHeight <= bottomThresholdPx;
+  }, [bottomThresholdPx]);
+
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = 'smooth') => {
+      const root = scrollContainerRef.current;
+      isAutoScrollingRef.current = true;
+      if (root) {
+        root.scrollTo({ top: root.scrollHeight, behavior });
+      } else {
+        scrollSentinelRef.current?.scrollIntoView({ behavior, block: 'end' });
+      }
+      userScrolledAwayRef.current = false;
+      isAtBottomRef.current = true;
+      setIsAtBottom(true);
+      requestAnimationFrame(() => {
+        isAutoScrollingRef.current = false;
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    if (!root || !active) return;
+
+    const onScroll = () => {
+      if (isAutoScrollingRef.current) return;
+      const atBottom = checkIsAtBottom();
+      isAtBottomRef.current = atBottom;
+      setIsAtBottom(atBottom);
+      if (!atBottom) {
+        userScrolledAwayRef.current = true;
+      }
+    };
+
+    const onUserScrollIntent = () => {
+      if (!isAutoScrollingRef.current) {
+        userScrolledAwayRef.current = true;
+      }
+    };
+
+    root.addEventListener('scroll', onScroll, { passive: true });
+    root.addEventListener('wheel', onUserScrollIntent, { passive: true });
+    root.addEventListener('touchstart', onUserScrollIntent, { passive: true });
+
+    return () => {
+      root.removeEventListener('scroll', onScroll);
+      root.removeEventListener('wheel', onUserScrollIntent);
+      root.removeEventListener('touchstart', onUserScrollIntent);
+    };
+  }, [active, checkIsAtBottom]);
 
   useEffect(() => {
     if (!active) return;
+    if (userScrolledAwayRef.current && !checkIsAtBottom()) return;
 
+    isAutoScrollingRef.current = true;
     const root = scrollContainerRef.current;
-    const sentinel = scrollSentinelRef.current;
-    if (!root || !sentinel) return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsAtBottom(entry.isIntersecting);
-      },
-      {
-        root,
-        threshold: 0,
-        rootMargin: `0px 0px ${bottomThresholdPx}px 0px`,
-      },
-    );
+    const runScroll = () => {
+      if (root) {
+        root.scrollTo({ top: root.scrollHeight, behavior: 'auto' });
+      } else {
+        scrollSentinelRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+      }
+      isAutoScrollingRef.current = false;
+      isAtBottomRef.current = true;
+      setIsAtBottom(true);
+    };
 
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [bottomThresholdPx, active]);
-
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    scrollSentinelRef.current?.scrollIntoView({ behavior, block: 'end' });
-  }, []);
-
-  useEffect(() => {
-    if (!isAtBottomRef.current) return;
-    scrollSentinelRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(runScroll);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deps supplied by caller
   }, deps);
 

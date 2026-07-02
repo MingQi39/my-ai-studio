@@ -18,6 +18,10 @@ export type StudioChatMessage = {
     status: 'running' | 'completed';
   };
   toolRuns?: ChatToolRun[];
+  /** 后端标记：该条 assistant 是否已生成完成 */
+  isComplete?: boolean;
+  /** 流式恢复失败时，在对话内展示重试提示 */
+  recoveryPrompt?: 'interrupted';
 };
 
 export type StudioChatStreamBuffers = {

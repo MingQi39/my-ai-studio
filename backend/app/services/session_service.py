@@ -20,6 +20,7 @@ from app.models.schemas import (
     MessageCreate,
     PaginationParams,
     PaginatedResponse,
+    ChatToolsConfig,
 )
 
 
@@ -323,12 +324,32 @@ class SessionService(BaseService):
             config.top_p = data.top_p
         if data.system_prompt is not None:
             config.system_prompt = data.system_prompt
+        if data.tools_config is not None:
+            config.tools_config = data.tools_config.model_dump()
 
         await self.db.commit()
         await self.db.refresh(config)
 
         self.logger.info(f"Session config updated: {session_id}")
         return config
+
+    async def save_tools_config(
+        self,
+        session_id: UUID,
+        user_id: UUID,
+        tools_config: ChatToolsConfig,
+    ) -> None:
+        """Persist enabled chat tools for a session."""
+        session = await self.get_session(session_id, user_id)
+        if not session:
+            return
+
+        config = await self.get_session_config(session_id)
+        if not config:
+            return
+
+        config.tools_config = tools_config.model_dump()
+        await self.db.commit()
 
     # =========================================================================
     # 消息管理
@@ -355,6 +376,7 @@ class SessionService(BaseService):
             thinking_content=data.thinking_content,
             tokens_used=data.token_count,
             tool_calls=data.tool_calls,
+            is_complete=getattr(data, "is_complete", True),
         )
         self.db.add(message)
 
@@ -396,7 +418,8 @@ class SessionService(BaseService):
             select(Message)
             .where(and_(*conditions))
             .options(
-                selectinload(Message.attachments).selectinload(MessageAttachment.file)
+                selectinload(Message.attachments).selectinload(MessageAttachment.file),
+                selectinload(Message.tool_executions),
             )
             .order_by(desc(Message.created_at))
             .limit(limit)
@@ -423,3 +446,29 @@ class SessionService(BaseService):
         )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def delete_message(
+        self,
+        session_id: UUID,
+        message_id: UUID,
+        user_id: UUID,
+    ) -> bool:
+        """删除会话中的单条消息（需验证会话归属）"""
+        session = await self.get_session(session_id, user_id)
+        if not session:
+            return False
+
+        stmt = select(Message).where(
+            and_(
+                Message.id == str(message_id),
+                Message.session_id == str(session_id),
+            )
+        )
+        result = await self.db.execute(stmt)
+        message = result.scalar_one_or_none()
+        if not message:
+            return False
+
+        await self.db.delete(message)
+        await self.db.commit()
+        return True

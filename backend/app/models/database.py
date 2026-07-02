@@ -246,6 +246,7 @@ class Message(Base, UUIDMixin):
     model_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
     provider_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tool_calls: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    is_complete: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -289,6 +290,7 @@ class SessionConfig(Base, UUIDMixin):
     max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     top_p: Mapped[int | None] = mapped_column(Integer, nullable=True)
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tools_config: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # Relationships
     session: Mapped["Session"] = relationship("Session", back_populates="config")

@@ -106,6 +106,7 @@ export function MainWorkspace({
     handleStopGeneration,
     handleAddFile,
     handleExportCode,
+    handleRetryStreamRecovery,
   } = useStudioChat({
     currentSessionId,
     onSessionChange,
@@ -122,6 +123,7 @@ export function MainWorkspace({
   const { scrollContainerRef, scrollSentinelRef, showJumpButton, scrollToBottom } = useChatAutoScroll({
     deps: [messages, isGenerating],
     active: messages.length > 0,
+    resetKey: currentSessionId,
   });
 
   useEffect(() => {
@@ -227,6 +229,8 @@ export function MainWorkspace({
               messages={messages}
               isDarkMode={isDarkMode}
               scrollSentinelRef={scrollSentinelRef}
+              onRecoveryRetry={handleRetryStreamRecovery}
+              isRecoveryRetrying={isGenerating}
             />
           )}
         </div>
@@ -296,7 +300,6 @@ export function MainWorkspace({
                         model={selectedModel}
                         onClick={() => onOpenConnectionModal()}
                         variant="compact"
-                        className="max-w-[180px] sm:max-w-[220px]"
                       />
                       <div ref={toolsMenuRef} className="relative">
                         <Button

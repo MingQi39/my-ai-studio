@@ -45,7 +45,7 @@ export function TravelChatView({
   selectedModel = '',
 }: TravelChatViewProps) {
   const { t } = useTranslation();
-  const { messages, isGenerating, isLoadingHistory, chatMode, setChatMode } = useChatStore();
+  const { messages, isGenerating, isLoadingHistory, chatMode, setChatMode, currentSessionId } = useChatStore();
   useTravelSessionRoute();
   useTravelSessionRestore();
   const { sendMessage: sendChatMessage } = useChat();
@@ -56,6 +56,7 @@ export function TravelChatView({
   const { scrollContainerRef, scrollSentinelRef, showJumpButton, scrollToBottom } = useChatAutoScroll({
     deps: [messages, isGenerating],
     active: messages.length > 0,
+    resetKey: currentSessionId,
   });
 
   const handleSend = (textStr: string | React.FormEvent) => {

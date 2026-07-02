@@ -121,6 +121,52 @@ export interface ModelConfigResponse {
   updated_at: string;
 }
 
+const ACTIVE_MODEL_CONFIG_KEY = 'studio_active_model_config_id';
+
+export function getStoredActiveModelConfigId(): string | null {
+  return localStorage.getItem(ACTIVE_MODEL_CONFIG_KEY);
+}
+
+export function setStoredActiveModelConfigId(id: string | null): void {
+  if (id) {
+    localStorage.setItem(ACTIVE_MODEL_CONFIG_KEY, id);
+  } else {
+    localStorage.removeItem(ACTIVE_MODEL_CONFIG_KEY);
+  }
+}
+
+export function getProviderIdFromConfig(config: ModelConfigResponse): string {
+  if (config.adapter_type === 'official' && config.provider) {
+    return config.provider;
+  }
+  return config.adapter_type;
+}
+
+export function pickActiveModelConfig(configs: ModelConfigResponse[]): ModelConfigResponse | null {
+  if (configs.length === 0) return null;
+
+  const storedId = getStoredActiveModelConfigId();
+  if (storedId) {
+    const stored = configs.find((config) => config.id === storedId);
+    if (stored) return stored;
+  }
+
+  const defaults = configs.filter((config) => config.is_default);
+  if (defaults.length > 0) {
+    return defaults.sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    )[0];
+  }
+
+  return configs.sort(
+    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+  )[0];
+}
+
+export function getModelConfigDisplayName(config: ModelConfigResponse): string {
+  return config.name || config.model_id;
+}
+
 // 验证结果
 export interface ValidationResult {
   valid: boolean;
@@ -358,6 +404,14 @@ export async function getBuiltinModelCatalog(): Promise<BuiltinModelCatalog> {
 // 会话管理 API
 // ============================================================================
 
+/** 主聊天工具开关（与后端 ChatToolsConfig 对齐） */
+export interface ChatToolsConfig {
+  search: boolean;
+  code: boolean;
+  function: boolean;
+  structured: boolean;
+}
+
 // 会话创建请求
 export interface SessionCreate {
   title?: string;
@@ -384,7 +438,34 @@ export interface SessionResponse {
   message_count: number;
 }
 
+export interface SessionConfigResponse {
+  id: string;
+  model_id: string;
+  provider: string | null;
+  temperature: number;
+  max_tokens: number | null;
+  top_p: number | null;
+  system_prompt: string | null;
+  tools_config?: ChatToolsConfig | null;
+}
+
+export interface SessionConfigUpdate {
+  tools_config?: ChatToolsConfig;
+}
+
 // 消息响应
+export interface ToolExecutionResponse {
+  id: string;
+  tool_name: string;
+  tool_type: string;
+  input_params: Record<string, unknown>;
+  output: string | null;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  error_message: string | null;
+  execution_time_ms: number | null;
+  created_at: string;
+}
+
 export interface MessageResponse {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -394,8 +475,10 @@ export interface MessageResponse {
   model_used: string | null;
   provider_used: string | null;
   tool_calls: Array<Record<string, unknown>> | null;
+  is_complete?: boolean;
   created_at: string;
-  attachments: Array<Record<string, unknown>> | null;
+  attachments: FileUploadResponse[] | null;
+  tool_executions?: ToolExecutionResponse[] | null;
 }
 
 // 分页响应
@@ -477,17 +560,29 @@ export async function getSessionMessages(
   return request<MessageResponse[]>(`/sessions/${sessionId}/messages?${params.toString()}`);
 }
 
+/**
+ * 获取会话配置
+ */
+export async function getSessionConfig(sessionId: string): Promise<SessionConfigResponse> {
+  return request<SessionConfigResponse>(`/sessions/${sessionId}/config`);
+}
+
+/**
+ * 更新会话配置
+ */
+export async function updateSessionConfig(
+  sessionId: string,
+  data: SessionConfigUpdate,
+): Promise<SessionConfigResponse> {
+  return request<SessionConfigResponse>(`/sessions/${sessionId}/config`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
 // ============================================================================
 // 聊天 API
 // ============================================================================
-
-/** 主聊天工具开关（与后端 ChatToolsConfig 对齐） */
-export interface ChatToolsConfig {
-  search: boolean;
-  code: boolean;
-  function: boolean;
-  structured: boolean;
-}
 
 // 聊天请求
 export interface ChatRequest {
@@ -499,6 +594,7 @@ export interface ChatRequest {
   system_prompt?: string; // 系统指令
   model_config_id?: string; // 指定使用的模型配置 ID
   tools_config?: ChatToolsConfig;
+  skip_persist_user_message?: boolean;
 }
 
 
@@ -604,6 +700,137 @@ export async function completeChat(chatRequest: ChatRequest): Promise<MessageRes
 /**
  * 获取聊天历史
  */
+export interface StreamStatus {
+  session_id: string;
+  is_streaming: boolean;
+  message_id: string | null;
+  content: string | null;
+  thinking: string | null;
+  is_complete?: boolean | null;
+}
+
+/**
+ * 检查会话是否有活跃的流式生成
+ */
+export async function getStreamStatus(sessionId: string): Promise<StreamStatus> {
+  return request<StreamStatus>(`/chat/stream-status/${sessionId}`);
+}
+
+/**
+ * 恢复流式连接：重连正在进行的 SSE 流
+ * 先发送已生成内容，再转发后续增量
+ */
+export function startResumeStream(
+  sessionId: string,
+  onChunk: (chunk: ChatStreamChunk) => void,
+  onError?: (error: Error) => void,
+  onComplete?: () => void,
+): { promise: Promise<void>; cancel: () => void } {
+  let finished = false;
+
+  const finish = (callback?: () => void) => {
+    if (finished) return;
+    finished = true;
+    callback?.();
+  };
+
+  const client = new SSEClient<ChatStreamChunk>({
+    url: `${API_BASE_URL}/chat/stream-resume/${sessionId}`,
+    method: 'GET',
+    headers: getJsonAuthHeaders(),
+    onEvent: (chunk) => {
+      onChunk(chunk);
+
+      if (chunk.type === 'done') {
+        finish(onComplete);
+        client.cancel();
+        return;
+      }
+
+      if (chunk.type === 'error') {
+        finish(() => onError?.(new Error(chunk.message || chunk.error || 'Unknown error')));
+        client.cancel();
+      }
+    },
+    onError: (error) => {
+      finish(() => onError?.(error));
+    },
+    onComplete: () => {
+      finish(onComplete);
+    },
+  });
+
+  const promise = client.start().catch((error) => {
+    finish(() => onError?.(error instanceof Error ? error : new Error(String(error))));
+  });
+
+  return {
+    promise,
+    cancel: () => {
+      client.cancel();
+      finish();
+    },
+  };
+}
+
+/**
+ * 重试未完成的 assistant 回复（删除残缺消息后重新流式生成）
+ */
+export function startRetryStreamChat(
+  sessionId: string,
+  request: Omit<ChatRequest, 'session_id' | 'message'>,
+  onChunk: (chunk: ChatStreamChunk) => void,
+  onError?: (error: Error) => void,
+  onComplete?: () => void,
+): { promise: Promise<void>; cancel: () => void } {
+  let finished = false;
+
+  const finish = (callback?: () => void) => {
+    if (finished) return;
+    finished = true;
+    callback?.();
+  };
+
+  const client = new SSEClient<ChatStreamChunk>({
+    url: `${API_BASE_URL}/chat/retry/${sessionId}`,
+    method: 'POST',
+    headers: getJsonAuthHeaders(),
+    body: JSON.stringify({ ...request, session_id: sessionId, message: '', skip_persist_user_message: true }),
+    onEvent: (chunk) => {
+      onChunk(chunk);
+
+      if (chunk.type === 'done') {
+        finish(onComplete);
+        client.cancel();
+        return;
+      }
+
+      if (chunk.type === 'error') {
+        finish(() => onError?.(new Error(chunk.message || chunk.error || 'Unknown error')));
+        client.cancel();
+      }
+    },
+    onError: (error) => {
+      finish(() => onError?.(error));
+    },
+    onComplete: () => {
+      finish(onComplete);
+    },
+  });
+
+  const promise = client.start().catch((error) => {
+    finish(() => onError?.(error instanceof Error ? error : new Error(String(error))));
+  });
+
+  return {
+    promise,
+    cancel: () => {
+      client.cancel();
+      finish();
+    },
+  };
+}
+
 export async function getChatHistory(
   sessionId: string,
   limit: number = 50
