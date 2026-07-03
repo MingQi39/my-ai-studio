@@ -84,8 +84,8 @@ async def download_file(
             iterfile(),
             media_type=file.mime_type or "application/octet-stream",
             headers={
-                "Content-Disposition": f'attachment; filename="{file.filename}"',
-                "Content-Length": str(file.file_size),
+                "Content-Disposition": f'attachment; filename="{file.name}"',
+                "Content-Length": str(file.size),
             },
         )
     except Exception as e:

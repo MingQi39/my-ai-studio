@@ -4,6 +4,7 @@
 提供 FastAPI 的依赖注入函数，用于共享资源和服务实例
 """
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
@@ -13,6 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db.database import get_db as db_get_db
+
+if TYPE_CHECKING:
+    from app.services.batch_service import BatchService
+    from app.services.chat_service import ChatService
+    from app.services.file_service import FileService
+    from app.services.model_service import ModelService
+    from app.services.session_service import SessionService
+    from app.services.user_service import UserService
 
 
 # HTTP Bearer 认证

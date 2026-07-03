@@ -60,7 +60,7 @@ class UserService(BaseService):
         """解码访问令牌，返回用户ID"""
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
-            user_id: str = payload.get("sub")
+            user_id: str | None = payload.get("sub")
             if user_id is None:
                 return None
             return user_id

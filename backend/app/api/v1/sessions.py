@@ -201,7 +201,7 @@ async def get_session_messages(
         if hasattr(msg, 'tool_executions') and msg.tool_executions:
             tool_executions_data = [
                 ToolExecutionResponse(
-                    id=ex.id,
+                    id=UUID(ex.id),
                     tool_name=ex.tool_name,
                     tool_type=ex.tool_type,
                     input_params=ex.input_params,
@@ -215,14 +215,14 @@ async def get_session_messages(
             ]
         
         result.append(MessageResponse(
-            id=msg.id,
+            id=UUID(msg.id),
             role=msg.role,
             content=msg.content,
             thinking_content=msg.thinking_content,
             tokens_used=msg.tokens_used,
             model_used=msg.model_used,
             provider_used=msg.provider_used,
-            tool_calls=msg.tool_calls,
+            tool_calls=msg.tool_calls if isinstance(msg.tool_calls, list) else None,
             is_complete=getattr(msg, 'is_complete', True),
             created_at=msg.created_at,
             attachments=attachments_data if attachments_data else None,

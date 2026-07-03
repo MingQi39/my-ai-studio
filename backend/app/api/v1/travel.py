@@ -437,7 +437,7 @@ async def travel_test_tool(
     tool_name: str,
     request: ToolTestRequest,
     _user_id: UUID = Depends(get_current_user_auth),
-) -> dict[str, Any]:
+) -> dict[str, Any] | JSONResponse:
     registry = _create_registry()
     if tool_name not in registry.tool_names:
         raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")

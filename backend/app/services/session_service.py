@@ -20,6 +20,7 @@ from app.models.schemas import (
     MessageCreate,
     PaginationParams,
     PaginatedResponse,
+    SessionResponse,
     ChatToolsConfig,
 )
 
@@ -113,7 +114,7 @@ class SessionService(BaseService):
         params: PaginationParams,
         include_archived: bool = False,
         session_type: SessionType | None = SessionType.chat,
-    ):
+    ) -> PaginatedResponse[SessionResponse]:
         """列出会话
 
         Args:
@@ -150,8 +151,7 @@ class SessionService(BaseService):
         items = result.scalars().all()
 
         # 为每个会话计算消息数量
-        from app.models.schemas import SessionResponse
-        session_responses = []
+        session_responses: list[SessionResponse] = []
         for session in items:
             # 查询该会话的消息数量
             msg_count_stmt = select(func.count(Message.id)).where(Message.session_id == str(session.id))
@@ -165,13 +165,13 @@ class SessionService(BaseService):
 
         total_pages = (total + params.page_size - 1) // params.page_size
 
-        return {
-            "items": session_responses,
-            "total": total,
-            "page": params.page,
-            "page_size": params.page_size,
-            "total_pages": total_pages,
-        }
+        return PaginatedResponse(
+            items=session_responses,
+            total=total,
+            page=params.page,
+            page_size=params.page_size,
+            total_pages=total_pages,
+        )
 
     async def update_session(
         self,

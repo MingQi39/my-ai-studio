@@ -115,7 +115,7 @@ async def list_available_models(
     """列出可用模型"""
     try:
         models = await model_service.list_available_models(config_id, user_id)
-        return models
+        return [ModelInfo.model_validate(model) for model in models]
     except Exception as e:
         logger.error(f"Failed to list available models: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list available models")

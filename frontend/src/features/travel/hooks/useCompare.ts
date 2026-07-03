@@ -233,7 +233,6 @@ export function useCompare() {
         max_rounds: 3,
         model_config_id: modelConfigId,
       }),
-      maxReconnectAttempts: 0,
       onEvent: (event: SSEEvent) => {
         if (event.type === 'session' && 'session_id' in event) {
           setCurrentSessionId(String(event.session_id));
