@@ -141,16 +141,16 @@ export function StudioLaunchpad({
   };
 
   return (
-    <div className="w-full max-w-[850px] mx-auto flex flex-col items-center pt-[5vh] px-6 pb-12">
-      <div className="text-center flex flex-col items-center mb-8 gap-4">
+    <div className="w-full max-w-[850px] mx-auto flex flex-col items-center pt-[4vh] sm:pt-[5vh] px-4 sm:px-6 pb-12">
+      <div className="text-center flex flex-col items-center mb-6 sm:mb-8 gap-3 sm:gap-4">
         <div className="rounded-2xl shadow-sm overflow-hidden p-2">
           <BrandLogo size="xl" alt={t('common.appName')} />
         </div>
         <div className="flex flex-col gap-2">
-          <h1 className="text-[24px] font-semibold text-[var(--text-primary)] tracking-tight">
+          <h1 className="text-[20px] sm:text-[24px] font-semibold text-[var(--text-primary)] tracking-tight">
             {t('launchpad.title')}
           </h1>
-          <p className="text-[var(--text-secondary)] text-[14px] leading-relaxed max-w-[500px]">
+          <p className="text-[var(--text-secondary)] text-[13px] sm:text-[14px] leading-relaxed max-w-[500px] px-1">
             {t('launchpad.subtitle')}
           </p>
         </div>
@@ -212,7 +212,8 @@ export function StudioLaunchpad({
                     <button
                       type="button"
                       onClick={(event) => onDeleteSession(session.id, event)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/10 rounded-md text-[var(--text-secondary)] hover:text-red-500 transition-all"
+                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-1.5 hover:bg-red-500/10 rounded-md text-[var(--text-secondary)] hover:text-red-500 transition-all"
+                      aria-label={t('sidebar.deleteSessionTitle')}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -291,7 +292,7 @@ function ModelRow({
   return (
     <div
       onClick={onClick}
-      className="group flex items-center min-h-[72px] px-4 py-3 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-hover)] transition-colors duration-200 cursor-pointer -mx-4 rounded-lg"
+      className="group flex items-center min-h-[72px] px-2 sm:px-4 py-3 border-b border-[var(--border-color)] last:border-0 hover:bg-[var(--bg-hover)] transition-colors duration-200 cursor-pointer rounded-lg"
     >
       <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', iconBg)}>{icon}</div>
       <div className="flex-1 min-w-0 ml-4 flex flex-col justify-center gap-1">

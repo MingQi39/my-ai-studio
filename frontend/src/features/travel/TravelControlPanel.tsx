@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Brain, CheckCircle2, AlertTriangle, Plug, Save, Loader2 } from 'lucide-react';
+import { Brain, CheckCircle2, AlertTriangle, Plug, Save, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
@@ -13,12 +13,14 @@ interface TravelControlPanelProps {
   selectedModel: string;
   onOpenModelSettings: () => void;
   isOpen: boolean;
+  onClose?: () => void;
 }
 
 export function TravelControlPanel({
   selectedModel,
   onOpenModelSettings,
   isOpen,
+  onClose,
 }: TravelControlPanelProps) {
   const { t } = useTranslation();
   const [settings, setSettings] = useState<TravelSettings | null>(null);
@@ -54,12 +56,19 @@ export function TravelControlPanel({
 
   return (
     <div
-      className="w-[300px] h-full flex flex-col border-l border-[var(--border-color)]"
+      className="w-full md:w-[300px] h-full flex flex-col border-l border-[var(--border-color)]"
       style={{ backgroundColor: 'var(--bg-panel)' }}
     >
-      <div className="p-4 border-b border-[var(--border-color)]">
-        <h2 className="text-sm font-semibold text-[var(--text-primary)]">{t('travel.panel.title')}</h2>
-        <p className="text-xs text-[var(--text-secondary)] mt-1">{t('travel.panel.subtitle')}</p>
+      <div className="p-4 border-b border-[var(--border-color)] flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">{t('travel.panel.title')}</h2>
+          <p className="text-xs text-[var(--text-secondary)] mt-1">{t('travel.panel.subtitle')}</p>
+        </div>
+        {onClose && (
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 md:hidden" onClick={onClose}>
+            <X size={16} />
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">

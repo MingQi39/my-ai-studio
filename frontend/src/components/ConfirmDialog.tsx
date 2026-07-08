@@ -68,7 +68,7 @@ export function ConfirmDialog({
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="flex items-start gap-4 p-6 pb-4">
+                    <div className="flex items-start gap-3 sm:gap-4 p-4 sm:p-6 pb-4">
                         <div
                             className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${type === 'danger' ? 'bg-red-500/10' : type === 'warning' ? 'bg-orange-500/10' : 'bg-blue-500/10'
                                 }`}
@@ -94,7 +94,7 @@ export function ConfirmDialog({
                     </div>
 
                     {/* Footer buttons */}
-                    <div className="flex items-center gap-3 px-6 pb-6 pt-2">
+                    <div className="flex items-center gap-3 px-4 sm:px-6 pb-4 sm:pb-6 pt-2">
                         <Button
                             onClick={onClose}
                             variant="ghost"

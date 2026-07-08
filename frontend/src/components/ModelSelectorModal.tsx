@@ -28,9 +28,9 @@ export function ModelSelectorModal({ isOpen, onClose, onSelect, isDarkMode }: Mo
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 p-0 sm:p-4">
       <div 
-        className="w-[520px] rounded-[16px] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 transition-colors"
+        className="w-full sm:w-[520px] sm:max-w-[calc(100vw-2rem)] max-h-[92dvh] rounded-t-2xl sm:rounded-[16px] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 transition-colors"
         style={{ 
             backgroundColor: 'var(--bg-card)',
             color: 'var(--text-primary)',
@@ -39,7 +39,7 @@ export function ModelSelectorModal({ isOpen, onClose, onSelect, isDarkMode }: Mo
       >
         
         {/* 1. Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-2">
+        <div className="flex items-center justify-between px-4 sm:px-6 pt-5 sm:pt-6 pb-2">
           <h2 className="text-[18px] font-bold tracking-tight">{t('modelSelector.title')}</h2>
           <button 
             onClick={onClose}
@@ -50,7 +50,7 @@ export function ModelSelectorModal({ isOpen, onClose, onSelect, isDarkMode }: Mo
         </div>
 
         {/* 2. Content */}
-        <div className="p-6 pt-2 flex flex-col gap-6">
+        <div className="p-4 sm:p-6 pt-2 flex flex-col gap-6 overflow-y-auto">
             
             {/* Project Selection */}
             <div className="flex flex-col gap-2">
@@ -133,7 +133,7 @@ export function ModelSelectorModal({ isOpen, onClose, onSelect, isDarkMode }: Mo
         </div>
 
         {/* 3. Footer */}
-        <div className="px-6 py-6 pt-2 flex items-center justify-end gap-3">
+        <div className="px-4 sm:px-6 py-4 sm:py-6 pt-2 flex items-center justify-end gap-3">
              <Button 
                 variant="ghost" 
                 onClick={onClose}

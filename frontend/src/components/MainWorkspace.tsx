@@ -143,8 +143,8 @@ export function MainWorkspace({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[var(--bg-main)] min-w-0 font-sans transition-colors duration-300">
-      <div className="h-[60px] flex items-center justify-between px-4 border-b border-[var(--border-color)] flex-shrink-0 z-10 bg-[var(--bg-main)]">
-        <div className="flex items-center gap-2">
+      <div className="h-[56px] sm:h-[60px] flex items-center justify-between gap-2 px-2 sm:px-4 border-b border-[var(--border-color)] flex-shrink-0 z-10 bg-[var(--bg-main)]">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -158,27 +158,27 @@ export function MainWorkspace({
             variant="ghost"
             size="sm"
             onClick={handleNewSession}
-            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md flex items-center gap-2"
+            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md flex items-center gap-2 px-2 sm:px-3"
           >
             <MessageSquarePlus size={18} />
             <span className="hidden sm:inline text-sm">{t("workspace.newChat")}</span>
           </Button>
         </div>
 
-        <div className="flex-1 text-center">
+        <div className="flex-1 text-center min-w-0 px-1">
           {currentSessionId &&
             sessions.length > 0 &&
             (() => {
               const currentSession = sessions.find((session) => session.id === currentSessionId);
               return currentSession ? (
-                <span className="text-sm font-medium text-[var(--text-primary)] truncate max-w-[400px] inline-block">
+                <span className="text-sm font-medium text-[var(--text-primary)] truncate max-w-full sm:max-w-[400px] inline-block">
                   {currentSession.title || t("workspace.untitledSession")}
                 </span>
               ) : null;
             })()}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <ActiveModelBadge
             model={selectedModel}
             onClick={() => onOpenConnectionModal()}
@@ -189,16 +189,16 @@ export function MainWorkspace({
             size="icon"
             onClick={handleExportCode}
             title={t("workspace.exportCode")}
-            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md"
+            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md hidden sm:inline-flex"
           >
             <Code2 size={20} />
           </Button>
-          {toggleControlPanel && !isControlPanelOpen && (
+          {toggleControlPanel && (
             <Button
               variant="ghost"
               size="icon"
               onClick={toggleControlPanel}
-              className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md"
+              className={`text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md ${isControlPanelOpen ? "md:hidden" : ""}`}
             >
               <Settings2 size={20} />
             </Button>
@@ -237,11 +237,11 @@ export function MainWorkspace({
 
         {showJumpButton && messages.length > 0 && <ChatJumpToBottom onClick={() => scrollToBottom("smooth")} />}
 
-        <div className="flex-shrink-0 w-full bg-[var(--bg-main)] px-4 py-4">
-          <div className="w-[800px] max-w-full mx-auto">
+        <div className="flex-shrink-0 w-full bg-[var(--bg-main)] px-3 sm:px-4 py-3 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="w-full max-w-[800px] mx-auto">
             <div
               className={cn(
-                "relative rounded-[28px] p-2 flex flex-col gap-1 border transition-all duration-300",
+                "relative rounded-2xl sm:rounded-[28px] p-2 flex flex-col gap-1 border transition-all duration-300",
                 isGenerating
                   ? "opacity-50 pointer-events-none grayscale"
                   : "focus-within:ring-1 focus-within:ring-[var(--border-hover)]",
@@ -294,8 +294,8 @@ export function MainWorkspace({
                   ) : undefined
                 }
                 footer={
-                  <div className="flex items-center justify-between px-2 pb-1">
-                    <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center justify-between px-2 pb-1 gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <ActiveModelBadge
                         model={selectedModel}
                         onClick={() => onOpenConnectionModal()}
@@ -317,7 +317,7 @@ export function MainWorkspace({
                         </Button>
 
                         {isToolsMenuOpen && (
-                          <div className="absolute bottom-full left-0 mb-3 w-64 bg-[var(--bg-card)] border border-[var(--border-color)] shadow-2xl rounded-xl overflow-hidden p-3 animate-in fade-in zoom-in-95 duration-200 z-50">
+                          <div className="absolute bottom-full left-0 mb-3 w-[min(16rem,calc(100vw-2rem))] bg-[var(--bg-card)] border border-[var(--border-color)] shadow-2xl rounded-xl overflow-hidden p-3 animate-in fade-in zoom-in-95 duration-200 z-50">
                             <div className="text-[10px] font-semibold text-[var(--text-secondary)] px-1 pb-2 uppercase tracking-wider">
                               {t("controlPanel.tools")}
                             </div>
@@ -377,7 +377,7 @@ export function MainWorkspace({
                         </Button>
 
                         {isPlusMenuOpen && (
-                          <div className="absolute bottom-full right-0 mb-3 w-56 bg-[var(--bg-card)] border border-[var(--border-color)] shadow-2xl rounded-xl overflow-hidden p-1.5 animate-in fade-in zoom-in-95 duration-200 z-50">
+                          <div className="absolute bottom-full right-0 mb-3 w-[min(14rem,calc(100vw-2rem))] bg-[var(--bg-card)] border border-[var(--border-color)] shadow-2xl rounded-xl overflow-hidden p-1.5 animate-in fade-in zoom-in-95 duration-200 z-50">
                             <div className="text-[10px] font-semibold text-[var(--text-secondary)] px-3 py-2 uppercase tracking-wider">
                               {t("workspace.addContent")}
                             </div>

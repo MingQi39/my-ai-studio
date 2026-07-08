@@ -166,12 +166,12 @@ export function SystemInstructionModal({
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200",
+        "fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-0 sm:p-4",
         isDarkMode && "dark"
       )}
     >
       <div
-        className="w-[600px] max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 transition-colors"
+        className="w-full sm:w-[600px] sm:max-w-[calc(100vw-2rem)] max-h-[92dvh] sm:max-h-[90vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 transition-colors"
         style={{
           backgroundColor: 'var(--bg-card)',
           border: '1px solid var(--border-color)',
@@ -181,7 +181,7 @@ export function SystemInstructionModal({
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[var(--border-color)]">
           <div className="flex flex-col gap-0.5">
             <h2 className="text-lg font-semibold text-[var(--text-primary)] tracking-tight">
               {t('instructions.title')}
@@ -200,7 +200,7 @@ export function SystemInstructionModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--bg-main)]">
-          <div className="p-6 space-y-4">
+          <div className="p-4 sm:p-6 space-y-4">
             {/* Create Button */}
             {!isCreating && !editingId && (
               <button
@@ -312,7 +312,7 @@ export function SystemInstructionModal({
         </div>
 
         {/* Footer Note */}
-        <div className="px-6 py-3 border-t border-[var(--border-color)] bg-[var(--bg-card)]">
+        <div className="px-4 sm:px-6 py-3 border-t border-[var(--border-color)] bg-[var(--bg-card)]">
           <p className="text-[10px] text-[var(--text-secondary)]">
             {t('instructions.footerNote')}
           </p>

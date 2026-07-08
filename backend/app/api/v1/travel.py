@@ -432,7 +432,7 @@ async def travel_get_tool(
     raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
 
 
-@router.post("/tools/{tool_name}/test")
+@router.post("/tools/{tool_name}/test", response_model=None)
 async def travel_test_tool(
     tool_name: str,
     request: ToolTestRequest,

@@ -9,9 +9,9 @@ type UserMessageBubbleProps = {
 
 const bubbleVariantClasses = {
   travel:
-    'max-w-[85%] md:max-w-[65%] text-[15px] leading-relaxed bg-slate-100 dark:bg-[#2A2B32] text-slate-900 dark:text-slate-100 px-5 py-3.5 rounded-3xl',
+    'max-w-[90%] sm:max-w-[85%] md:max-w-[65%] text-[15px] leading-relaxed bg-slate-100 dark:bg-[#2A2B32] text-slate-900 dark:text-slate-100 px-4 sm:px-5 py-3 sm:py-3.5 rounded-3xl',
   studio:
-    'bg-[var(--bg-card)] text-[var(--text-primary)] px-4 py-3 rounded-2xl rounded-tr-sm max-w-[80%] leading-relaxed border border-[var(--border-color)]',
+    'bg-[var(--bg-card)] text-[var(--text-primary)] px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl rounded-tr-sm max-w-[90%] sm:max-w-[80%] leading-relaxed border border-[var(--border-color)]',
 };
 
 function renderTravelContent(content: string) {

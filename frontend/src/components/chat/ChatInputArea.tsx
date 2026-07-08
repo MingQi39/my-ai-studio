@@ -65,7 +65,7 @@ export function ChatInputArea({
       style={textareaMaxHeight ? { maxHeight: textareaMaxHeight } : undefined}
       className={cn(
         layout === 'travel'
-          ? 'w-full max-h-48 min-h-[56px] py-4 pl-4 pr-16 bg-transparent border-none outline-none text-[15px] placeholder-slate-400 resize-none overflow-y-auto text-slate-800 dark:text-slate-200'
+          ? 'w-full max-h-48 min-h-[56px] py-4 pl-4 pr-16 bg-transparent border-none outline-none text-base placeholder-slate-400 resize-none overflow-y-auto text-slate-800 dark:text-slate-200'
           : 'w-full bg-transparent border-none outline-none text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] resize-none min-h-[40px] px-4 py-2 text-base custom-scrollbar',
         textareaClassName,
       )}

@@ -291,7 +291,8 @@ export function AppSidebar({
                               <button
                                 type="button"
                                 onClick={(e) => handleDeleteSession(session.id, e, true)}
-                                className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                                className="flex-shrink-0 p-1.5 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                                aria-label={t('sidebar.deleteSessionTitle')}
                               >
                                 <Trash2 size={12} />
                               </button>
@@ -399,8 +400,10 @@ export function AppSidebar({
                               </div>
 
                               <button
+                                type="button"
                                 onClick={(e) => handleDeleteSession(session.id, e)}
-                                className="flex-shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                                className="flex-shrink-0 p-1.5 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                                aria-label={t('sidebar.deleteSessionTitle')}
                               >
                                 <Trash2 size={12} />
                               </button>

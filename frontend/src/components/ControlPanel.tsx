@@ -90,7 +90,7 @@ export function ControlPanel({
 
   return (
 
-    <div className="w-[300px] h-full flex flex-col bg-[var(--bg-panel)] border-l border-[var(--border-color)] flex-shrink-0 text-[var(--text-primary)] font-sans overflow-y-auto custom-scrollbar transition-colors duration-300">
+    <div className="w-full md:w-[300px] h-full flex flex-col bg-[var(--bg-panel)] border-l border-[var(--border-color)] flex-shrink-0 text-[var(--text-primary)] font-sans overflow-y-auto custom-scrollbar transition-colors duration-300">
       {/* Header */}
       <div className="h-[60px] flex items-center justify-between px-5 border-b border-[var(--border-color)] flex-shrink-0">
         <h2 className="font-semibold text-sm">{t('controlPanel.runSettings')}</h2>

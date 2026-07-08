@@ -3,6 +3,8 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { TravelWorkspace } from '@/features/travel/TravelWorkspace';
 import { TravelControlPanel } from '@/features/travel/TravelControlPanel';
 import { TravelRuntimeContext } from '@/features/travel/TravelRuntimeContext';
+import { useIsMobile } from '@/components/ui/use-mobile';
+import { cn } from '@/components/ui/utils';
 
 const VALID_TABS = ['chat', 'react', 'tools', 'settings'] as const;
 type TravelTab = (typeof VALID_TABS)[number];
@@ -42,6 +44,7 @@ export function TravelPage({
   toggleControlPanel,
   onOpenModelSettings,
 }: TravelPageProps) {
+  const isMobile = useIsMobile();
   const sharedProps = {
     isDarkMode,
     isSidebarOpen,
@@ -64,15 +67,53 @@ export function TravelPage({
           <Route path="*" element={<Navigate to="chat" replace />} />
         </Routes>
 
-        <div
-          className={`transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${isControlPanelOpen ? 'w-[300px] opacity-100' : 'w-0 opacity-0'}`}
-        >
-          <TravelControlPanel
-            selectedModel={selectedModel}
-            onOpenModelSettings={onOpenModelSettings}
-            isOpen={isControlPanelOpen}
-          />
-        </div>
+        {/* Control panel: desktop rail or mobile overlay */}
+        {!isMobile ? (
+          <div
+            className={cn(
+              'transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0',
+              isControlPanelOpen ? 'w-[300px] opacity-100' : 'w-0 opacity-0',
+            )}
+          >
+            <TravelControlPanel
+              selectedModel={selectedModel}
+              onOpenModelSettings={onOpenModelSettings}
+              isOpen={isControlPanelOpen}
+              onClose={toggleControlPanel}
+            />
+          </div>
+        ) : (
+          <div
+            className={cn(
+              'fixed inset-0 z-40 transition-opacity duration-300',
+              isControlPanelOpen ? 'pointer-events-auto' : 'pointer-events-none',
+            )}
+            aria-hidden={!isControlPanelOpen}
+          >
+            <button
+              type="button"
+              className={cn(
+                'absolute inset-0 bg-black/50 transition-opacity duration-300',
+                isControlPanelOpen ? 'opacity-100' : 'opacity-0',
+              )}
+              onClick={toggleControlPanel}
+              aria-label="Close settings panel"
+            />
+            <div
+              className={cn(
+                'absolute inset-y-0 right-0 w-[min(300px,90vw)] shadow-2xl transition-transform duration-300 ease-in-out',
+                isControlPanelOpen ? 'translate-x-0' : 'translate-x-full',
+              )}
+            >
+              <TravelControlPanel
+                selectedModel={selectedModel}
+                onOpenModelSettings={onOpenModelSettings}
+                isOpen={isControlPanelOpen}
+                onClose={toggleControlPanel}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </TravelRuntimeContext.Provider>
   );

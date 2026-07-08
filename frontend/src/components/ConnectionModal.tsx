@@ -389,11 +389,11 @@ export function ConnectionModal({ isOpen, onClose, isDarkMode, onConfigSave, sel
 
   return (
     <div className={cn(
-      "fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200",
+      "fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-0 sm:p-4",
       isDarkMode && "dark"
     )}>
       <div
-        className="w-[640px] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 transition-colors"
+        className="w-full sm:w-[640px] sm:max-w-[calc(100vw-2rem)] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh] sm:max-h-[90vh] animate-in zoom-in-95 duration-200 transition-colors"
         style={{
           backgroundColor: 'var(--bg-card)',
           border: '1px solid var(--border-color)',
@@ -402,21 +402,21 @@ export function ConnectionModal({ isOpen, onClose, isDarkMode, onConfigSave, sel
       >
 
         {/* 1. Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
-          <div className="flex flex-col gap-0.5">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[var(--border-color)]">
+          <div className="flex flex-col gap-0.5 min-w-0 pr-2">
             <h2 className="text-lg font-semibold text-[var(--text-primary)] tracking-tight">{t('connection.title')}</h2>
-            <p className="text-xs text-[var(--text-secondary)]">{t('connection.subtitle')}</p>
+            <p className="text-xs text-[var(--text-secondary)] truncate">{t('connection.subtitle')}</p>
           </div>
           <button
             onClick={onClose}
-            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors rounded-full p-1 hover:bg-[var(--bg-hover)]"
+            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors rounded-full p-1 hover:bg-[var(--bg-hover)] shrink-0"
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-[var(--bg-main)]">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar bg-[var(--bg-main)]">
 
           {/* 2. Platform Category Tabs */}
           <div className="mb-6">
@@ -450,7 +450,7 @@ export function ConnectionModal({ isOpen, onClose, isDarkMode, onConfigSave, sel
             <label className="block text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-3">
               {t('connection.vendor')}
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {categoryProviders.map((provider) => {
                 const isSelected = selectedProviderId === provider.id;
                 const hasSavedConfig = !!savedConfigs[provider.id];
@@ -593,7 +593,7 @@ export function ConnectionModal({ isOpen, onClose, isDarkMode, onConfigSave, sel
             {testStatus === 'error' && (
               <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
                 <AlertCircle size={14} className="text-red-500" />
-                <span className="text-sm font-medium text-red-600 dark:text-red-400 truncate max-w-[300px]">{errorMessage || t('connection.connectFailed')}</span>
+                <span className="text-sm font-medium text-red-600 dark:text-red-400 truncate max-w-[min(300px,50vw)]">{errorMessage || t('connection.connectFailed')}</span>
               </div>
             )}
           </div>
@@ -601,7 +601,7 @@ export function ConnectionModal({ isOpen, onClose, isDarkMode, onConfigSave, sel
         </div>
 
         {/* 6. Footer */}
-        <div className="p-5 border-t border-[var(--border-color)] flex justify-end gap-3 bg-[var(--bg-card)]">
+        <div className="p-4 sm:p-5 border-t border-[var(--border-color)] flex justify-end gap-3 bg-[var(--bg-card)] pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-5">
           <Button
             variant="ghost"
             onClick={onClose}

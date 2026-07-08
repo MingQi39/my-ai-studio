@@ -62,19 +62,22 @@ export function TravelWorkspace({
         <div className="flex flex-col h-full w-full bg-[var(--bg-main)] text-[var(--text-primary)]">
             {toastConfig && <Toast message={toastConfig.message} type={toastConfig.type} onClose={hideToast} />}
 
-            <header className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-[var(--border-color)]">
-                <div className="flex items-center gap-3 min-w-0">
-                    {!isSidebarOpen && (
-                        <Button variant="ghost" size="icon" onClick={toggleSidebar} className="h-9 w-9">
-                            <Menu size={20} />
-                        </Button>
-                    )}
+            <header className="h-14 flex-shrink-0 flex items-center justify-between px-3 sm:px-4 border-b border-[var(--border-color)]">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={toggleSidebar}
+                        className={`h-9 w-9 shrink-0 ${isSidebarOpen ? 'md:hidden' : ''}`}
+                    >
+                        <Menu size={20} />
+                    </Button>
                     <div className="min-w-0">
                         <h1 className="text-sm font-semibold truncate">{pageTitle}</h1>
-                        <p className="text-xs text-[var(--text-secondary)] truncate">{t('sidebar.travelAgent')}</p>
+                        <p className="text-xs text-[var(--text-secondary)] truncate hidden sm:block">{t('sidebar.travelAgent')}</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                     <ActiveModelBadge
                         model={selectedModel}
                         onClick={onOpenModelSettings}
@@ -94,7 +97,7 @@ export function TravelWorkspace({
                         selectedModel={selectedModel}
                     />
                 ) : (
-                    <div className="h-full overflow-y-auto p-6 custom-scrollbar">
+                    <div className="h-full overflow-y-auto p-4 sm:p-6 custom-scrollbar">
                         <div className="max-w-6xl mx-auto w-full">
                             {activeTab === 'react' && <ReactView showToast={showToast} selectedModel={selectedModel} isDarkMode={isDarkMode} />}
                             {activeTab === 'tools' && <ToolsView showToast={showToast} />}
@@ -146,8 +149,8 @@ function ReactView({
         <div className="w-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
 
             {/* 顶部控制栏 */}
-            <div className="w-full mb-8 bg-white dark:bg-[#151E2E] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                <h2 className="text-2xl font-bold mb-1 tracking-tight">🧠 ReAct 推理链详解</h2>
+            <div className="w-full mb-6 sm:mb-8 bg-white dark:bg-[#151E2E] p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <h2 className="text-xl sm:text-2xl font-bold mb-1 tracking-tight">🧠 ReAct 推理链详解</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">深入查看 Agent 每一步的推理过程和工具调用</p>
 
                 <div className="flex flex-col gap-4">
@@ -360,9 +363,9 @@ function ToolsView({ showToast }: { showToast: (message: string, type?: string) 
         <div className="w-full max-w-5xl flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20 relative">
 
             {/* 顶部标题区 */}
-            <div className="flex items-center justify-between mb-8 bg-white dark:bg-[#151E2E] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                <div>
-                    <h2 className="text-2xl font-bold mb-1 tracking-tight">🔧 工具注册表</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8 bg-white dark:bg-[#151E2E] p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="min-w-0">
+                    <h2 className="text-xl sm:text-2xl font-bold mb-1 tracking-tight">🔧 工具注册表</h2>
                     <p className="text-sm text-slate-500 dark:text-slate-400">查看 Agent 可以使用的所有工具，理解 Function Calling 的 JSON Schema</p>
                 </div>
                 <div className="flex items-center gap-4">
@@ -466,26 +469,26 @@ function ToolsView({ showToast }: { showToast: (message: string, type?: string) 
             )}
 
             {/* 右侧滑出测试面板 (Drawer) */}
-            <div className={`fixed top-0 right-0 h-full w-[400px] bg-white dark:bg-[#0F172A] shadow-[-10px_0_30px_rgba(0,0,0,0.15)] border-l border-slate-200 dark:border-slate-800 transition-transform duration-300 z-50 flex flex-col ${selectedTool ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className={`fixed top-0 right-0 h-full w-full max-w-[400px] bg-white dark:bg-[#0F172A] shadow-[-10px_0_30px_rgba(0,0,0,0.15)] border-l border-slate-200 dark:border-slate-800 transition-transform duration-300 z-50 flex flex-col ${selectedTool ? 'translate-x-0' : 'translate-x-full'}`}>
 
                 {selectedTool && (
                     <>
                         {/* Drawer 头部 */}
-                        <div className="h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 bg-slate-50 dark:bg-[#151E2E]">
-                            <div className="flex items-center gap-2">
-                                {React.createElement(selectedTool.icon, { size: 18, className: "text-[#3B82F6]" })}
-                                <h3 className="font-bold text-slate-800 dark:text-slate-200 font-mono tracking-tight">测试 {selectedTool.name}</h3>
+                        <div className="h-14 sm:h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-6 bg-slate-50 dark:bg-[#151E2E]">
+                            <div className="flex items-center gap-2 min-w-0">
+                                {React.createElement(selectedTool.icon, { size: 18, className: "text-[#3B82F6] shrink-0" })}
+                                <h3 className="font-bold text-slate-800 dark:text-slate-200 font-mono tracking-tight truncate">测试 {selectedTool.name}</h3>
                             </div>
                             <button
                                 onClick={closeTestPanel}
-                                className="p-1.5 rounded-md text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+                                className="p-1.5 rounded-md text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors shrink-0"
                             >
                                 <X size={18} />
                             </button>
                         </div>
 
                         {/* Drawer 滚动内容 */}
-                        <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col pb-[max(1rem,env(safe-area-inset-bottom))]">
 
                             <div className="text-sm text-slate-500 dark:text-slate-400 mb-6 bg-blue-50 dark:bg-blue-500/10 p-3 rounded-lg border border-blue-100 dark:border-blue-500/20">
                                 请填写下方参数以模拟 Tool API 的真实调用过程。
@@ -603,7 +606,7 @@ function SettingsView({ showToast, onOpenModelSettings }: { showToast: (message:
             </div>
 
             <div className="space-y-6">
-                <div className="bg-white dark:bg-[#151E2E] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="bg-white dark:bg-[#151E2E] p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <h3 className="text-sm font-bold mb-4 text-slate-800 dark:text-slate-200 flex items-center gap-2">
                         <Brain size={16} className="text-[#3B82F6]" /> 模型连接
                     </h3>
@@ -620,7 +623,7 @@ function SettingsView({ showToast, onOpenModelSettings }: { showToast: (message:
                     )}
                 </div>
 
-                <div className="bg-white dark:bg-[#151E2E] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="bg-white dark:bg-[#151E2E] p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <h3 className="text-sm font-bold mb-4 text-slate-800 dark:text-slate-200">ReAct 推理轮次</h3>
                     <input
                         type="number"
@@ -632,7 +635,7 @@ function SettingsView({ showToast, onOpenModelSettings }: { showToast: (message:
                     />
                 </div>
 
-                <div className="bg-white dark:bg-[#151E2E] p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="bg-white dark:bg-[#151E2E] p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <h3 className="text-sm font-bold mb-4 text-slate-800 dark:text-slate-200">外部工具（服务端 .env）</h3>
                     <ul className="space-y-2 text-sm">
                         <li className="flex items-center gap-2">

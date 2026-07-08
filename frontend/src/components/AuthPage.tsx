@@ -178,12 +178,12 @@ export function AuthPage({ onAuthSuccess, isDarkMode = false, toggleTheme }: Aut
     position: 'fixed',
     top: 0,
     left: 0,
-    width: '100vw',
-    height: '100vh',
+    width: '100%',
+    height: '100dvh',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    overflow: 'auto',
     zIndex: 50,
     backgroundColor: isDarkMode ? '#020617' : '#f1f5f9',
   };
@@ -206,7 +206,7 @@ export function AuthPage({ onAuthSuccess, isDarkMode = false, toggleTheme }: Aut
       </div>
 
       {/* Top-right Controls */}
-      <div className="absolute top-6 right-6 z-[100] flex items-center gap-2 pointer-events-auto">
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[100] flex items-center gap-2 pointer-events-auto">
         <div className={`rounded-full ${isDarkMode ? 'bg-slate-900 border border-slate-700' : 'bg-white border border-slate-200 shadow-sm'}`}>
           <LanguageSwitcher compact menuAlign="end" tone="auth" isDarkMode={isDarkMode} />
         </div>
@@ -455,7 +455,7 @@ export function AuthPage({ onAuthSuccess, isDarkMode = false, toggleTheme }: Aut
         </div>
 
         {/* Footer info */}
-        <div className="text-center mt-8 animate-in fade-in duration-1000 delay-300 fixed bottom-6 w-full pointer-events-none">
+        <div className="text-center mt-6 sm:mt-8 animate-in fade-in duration-1000 delay-300 pb-6 sm:pb-0 sm:fixed sm:bottom-6 w-full pointer-events-none px-4">
           <p className={`text-sm ${isDarkMode ? 'text-slate-600' : 'text-slate-400'}`}>
             © 2026 {t('common.appOwner')}
           </p>

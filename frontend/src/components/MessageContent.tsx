@@ -71,7 +71,7 @@ export function MessageContent({
 
                         if (!isInline && match) {
                             return (
-                                <div style={{ position: 'relative', marginTop: '1rem', marginBottom: '1rem' }}>
+                                <div style={{ position: 'relative', marginTop: '1rem', marginBottom: '1rem', maxWidth: '100%', overflowX: 'auto' }}>
                                     {/* Language label and copy button */}
                                     <div style={{
                                         display: 'flex',
@@ -121,8 +121,11 @@ export function MessageContent({
                                             borderTopLeftRadius: 0,
                                             borderTopRightRadius: 0,
                                             borderBottomLeftRadius: '8px',
-                                            borderBottomRightRadius: '8px'
+                                            borderBottomRightRadius: '8px',
+                                            fontSize: '0.8125rem',
+                                            maxWidth: '100%',
                                         }}
+                                        wrapLongLines
                                     >
                                         {code}
                                     </SyntaxHighlighter>

@@ -133,7 +133,7 @@ export function TravelChatView({
       )}
 
       <div
-        className={`w-full mx-auto px-4 pb-2 pt-2 shrink-0 bg-gradient-to-t from-white via-white to-transparent dark:from-[#0F172A] dark:via-[#0F172A] ${isCompareMode ? 'max-w-7xl' : 'max-w-4xl'}`}
+        className={`w-full mx-auto px-3 sm:px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shrink-0 bg-gradient-to-t from-white via-white to-transparent dark:from-[#0F172A] dark:via-[#0F172A] ${isCompareMode ? 'max-w-7xl' : 'max-w-4xl'}`}
       >
         <ChatInputArea
           layout="travel"
@@ -144,53 +144,53 @@ export function TravelChatView({
           placeholder="发送消息..."
           innerClassName="flex flex-col relative w-full shadow-sm bg-white dark:bg-[#1E293B] border border-slate-300 dark:border-slate-700 rounded-2xl focus-within:ring-2 focus-within:ring-[#3B82F6]/50 focus-within:border-[#3B82F6] transition-all overflow-hidden"
           header={
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-sm">
-              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mr-1 uppercase tracking-wider">
+            <div className="flex items-center gap-2 px-3 sm:px-4 py-2.5 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-sm overflow-x-auto">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mr-1 uppercase tracking-wider shrink-0 hidden sm:inline">
                 对话模式
               </span>
-              <div className="flex bg-slate-200/50 dark:bg-slate-800/50 p-0.5 rounded-lg">
+              <div className="flex bg-slate-200/50 dark:bg-slate-800/50 p-0.5 rounded-lg shrink-0">
                 <button
                   onClick={() => {
                     setIsCompareMode(false);
                     setChatMode('agent');
                   }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${
                     !isCompareMode && chatMode === 'agent'
                       ? 'bg-white dark:bg-[#1E293B] text-[#3B82F6] shadow-sm'
                       : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                   }`}
                 >
-                  <Brain size={14} /> Agent (ReAct)
+                  <Brain size={14} /> <span className="hidden sm:inline">Agent (ReAct)</span><span className="sm:hidden">Agent</span>
                 </button>
                 <button
                   onClick={() => {
                     setIsCompareMode(false);
                     setChatMode('llm');
                   }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${
                     !isCompareMode && chatMode === 'llm'
                       ? 'bg-white dark:bg-[#1E293B] text-blue-500 shadow-sm'
                       : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                   }`}
                 >
-                  <Activity size={14} /> 原生 LLM
+                  <Activity size={14} /> LLM
                 </button>
                 <button
                   onClick={() => setIsCompareMode(true)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${
                     isCompareMode
                       ? 'bg-white dark:bg-[#1E293B] text-emerald-500 shadow-sm'
                       : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                   }`}
                 >
-                  <GitCompare size={14} /> 对比模式
+                  <GitCompare size={14} /> <span className="hidden sm:inline">对比模式</span><span className="sm:hidden">对比</span>
                 </button>
               </div>
               {messages.length > 0 && !isCompareMode && (
                 <button
                   type="button"
                   onClick={() => setExportToolbarOpen(true)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                     exportToolbarOpen
                       ? 'bg-white dark:bg-[#1E293B] text-emerald-600 shadow-sm'
                       : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
@@ -198,7 +198,7 @@ export function TravelChatView({
                   aria-expanded={exportToolbarOpen}
                 >
                   <FileDown size={14} />
-                  {t('travel.export.toolbarLabel')}
+                  <span className="hidden sm:inline">{t('travel.export.toolbarLabel')}</span>
                 </button>
               )}
               {onOpenModelSettings && (
@@ -206,13 +206,13 @@ export function TravelChatView({
                   model={selectedModel}
                   onClick={onOpenModelSettings}
                   variant="compact"
-                  className="ml-auto max-w-[180px] sm:max-w-[220px]"
+                  className="ml-auto max-w-[140px] sm:max-w-[220px] shrink-0"
                 />
               )}
             </div>
           }
           hint={
-            <div className="text-center mt-3 text-[11px] text-slate-400 dark:text-slate-500">
+            <div className="text-center mt-2 sm:mt-3 text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 px-2 line-clamp-2 sm:line-clamp-none">
               内容由 AI 生成，Agent 模式将调用外部工具验证数据真实性，LLM 模式可能会产生幻觉。
             </div>
           }

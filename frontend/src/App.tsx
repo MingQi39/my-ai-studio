@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -10,6 +10,8 @@ import { AuthPage } from './components/AuthPage';
 import { TravelPage } from './pages/TravelPage';
 import { branding } from './features/travel/config/branding';
 import { useSessionRoute } from './hooks/useSessionRoute';
+import { useIsMobile } from './components/ui/use-mobile';
+import { cn } from './components/ui/utils';
 
 import {
   User,
@@ -109,6 +111,7 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const isTravelRoute = location.pathname.startsWith('/travel');
   const activeTab = isTravelRoute ? 'travel-agent' : 'history';
@@ -126,8 +129,12 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true,
+  );
+  const [isControlPanelOpen, setIsControlPanelOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true,
+  );
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [enableReasoning, setEnableReasoning] = useState(true);
   const [toolsState, setToolsState] = useState<ChatToolsState>(DEFAULT_CHAT_TOOLS_STATE);
@@ -192,6 +199,50 @@ export default function App() {
     }
     setIsCheckingAuth(false);
   }, []);
+
+  useEffect(() => {
+    if (isMobile) {
+      setIsSidebarOpen(false);
+      setIsControlPanelOpen(false);
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (isMobile) {
+      setIsSidebarOpen(false);
+    }
+  }, [location.pathname, isMobile]);
+
+  // When resizing from mobile → desktop, restore rails so the layout isn't stuck collapsed.
+  const wasMobileRef = useRef(isMobile);
+  useEffect(() => {
+    if (wasMobileRef.current && !isMobile) {
+      setIsSidebarOpen(true);
+      setIsControlPanelOpen(true);
+    }
+    wasMobileRef.current = isMobile;
+  }, [isMobile]);
+
+  // Lock background scroll + Esc close while mobile drawers are open.
+  useEffect(() => {
+    if (!isMobile) return;
+    const drawerOpen = isSidebarOpen || isControlPanelOpen;
+    if (!drawerOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsSidebarOpen(false);
+        setIsControlPanelOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobile, isSidebarOpen, isControlPanelOpen]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -406,9 +457,27 @@ export default function App() {
     }
   `;
 
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen((open) => {
+      const next = !open;
+      if (next && isMobile) setIsControlPanelOpen(false);
+      return next;
+    });
+  }, [isMobile]);
+
+  const toggleControlPanel = useCallback(() => {
+    setIsControlPanelOpen((open) => {
+      const next = !open;
+      if (next && isMobile) setIsSidebarOpen(false);
+      return next;
+    });
+  }, [isMobile]);
+
+  const showChatControlPanel = isControlPanelOpen && activeTab === 'history';
+
   if (isCheckingAuth) {
     return (
-      <div className="flex h-screen w-full items-center justify-center" style={{ backgroundColor: isDarkMode ? '#131314' : '#f5f5f5' }}>
+      <div className="flex h-dvh w-full items-center justify-center" style={{ backgroundColor: isDarkMode ? '#131314' : '#f5f5f5' }}>
         <style>{globalStyles}</style>
         <style>{themeStyles}</style>
         <div className="text-center">
@@ -430,28 +499,72 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
+    <div className="flex h-dvh w-full overflow-hidden transition-colors duration-300" style={{ backgroundColor: 'var(--bg-main)' }}>
       <style>{globalStyles}</style>
       <style>{themeStyles}</style>
       <Toaster position="top-center" theme={isDarkMode ? 'dark' : 'light'} />
 
-      <div
-        className={`transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 border-r border-[var(--border-color)] ${isSidebarOpen ? 'w-[260px] opacity-100' : 'w-0 opacity-0'}`}
-        style={{ backgroundColor: 'var(--bg-sidebar)' }}
-      >
-        <AppSidebar
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          isDarkMode={isDarkMode}
-          toggleTheme={() => setIsDarkMode(!isDarkMode)}
-          currentUser={currentUser}
-          onLogout={handleLogout}
-          currentSessionId={currentSessionId}
-          onSelectSession={handleSelectSession}
-          onSessionsChange={refreshSessions}
-          sessionRefreshTrigger={sessionRefreshTrigger}
-        />
-      </div>
+      {/* Sidebar: desktop rail or mobile overlay (single mount) */}
+      {!isMobile ? (
+        <div
+          className={cn(
+            'transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 border-r border-[var(--border-color)]',
+            isSidebarOpen ? 'w-[260px] opacity-100' : 'w-0 opacity-0',
+          )}
+          style={{ backgroundColor: 'var(--bg-sidebar)' }}
+        >
+          <AppSidebar
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            isDarkMode={isDarkMode}
+            toggleTheme={() => setIsDarkMode(!isDarkMode)}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+            currentSessionId={currentSessionId}
+            onSelectSession={handleSelectSession}
+            onSessionsChange={refreshSessions}
+            sessionRefreshTrigger={sessionRefreshTrigger}
+          />
+        </div>
+      ) : (
+        <div
+          className={cn(
+            'fixed inset-0 z-40 transition-opacity duration-300',
+            isSidebarOpen ? 'pointer-events-auto' : 'pointer-events-none',
+          )}
+          aria-hidden={!isSidebarOpen}
+        >
+          <button
+            type="button"
+            className={cn(
+              'absolute inset-0 bg-black/50 transition-opacity duration-300',
+              isSidebarOpen ? 'opacity-100' : 'opacity-0',
+            )}
+            onClick={() => setIsSidebarOpen(false)}
+            aria-label="Close sidebar"
+          />
+          <div
+            className={cn(
+              'absolute inset-y-0 left-0 w-[min(280px,85vw)] border-r border-[var(--border-color)] shadow-2xl transition-transform duration-300 ease-in-out',
+              isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+            )}
+            style={{ backgroundColor: 'var(--bg-sidebar)' }}
+          >
+            <AppSidebar
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              isDarkMode={isDarkMode}
+              toggleTheme={() => setIsDarkMode(!isDarkMode)}
+              currentUser={currentUser}
+              onLogout={handleLogout}
+              currentSessionId={currentSessionId}
+              onSelectSession={handleSelectSession}
+              onSessionsChange={refreshSessions}
+              sessionRefreshTrigger={sessionRefreshTrigger}
+            />
+          </div>
+        </div>
+      )}
 
       <Routes>
         <Route
@@ -459,7 +572,7 @@ export default function App() {
           element={
             <MainChatRoute
               isSidebarOpen={isSidebarOpen}
-              toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              toggleSidebar={toggleSidebar}
               isDarkMode={isDarkMode}
               hasModelConfig={hasModelConfig}
               onOpenConnectionModal={openConnectionModal}
@@ -471,7 +584,7 @@ export default function App() {
               modelConfigId={selectedModelConfigId}
               selectedModel={selectedModel}
               isControlPanelOpen={isControlPanelOpen}
-              toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
+              toggleControlPanel={toggleControlPanel}
               toolsState={toolsState}
               onToolsStateChange={handleToolsStateChange}
             />
@@ -482,7 +595,7 @@ export default function App() {
           element={
             <MainChatRoute
               isSidebarOpen={isSidebarOpen}
-              toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              toggleSidebar={toggleSidebar}
               isDarkMode={isDarkMode}
               hasModelConfig={hasModelConfig}
               onOpenConnectionModal={openConnectionModal}
@@ -494,7 +607,7 @@ export default function App() {
               modelConfigId={selectedModelConfigId}
               selectedModel={selectedModel}
               isControlPanelOpen={isControlPanelOpen}
-              toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
+              toggleControlPanel={toggleControlPanel}
               toolsState={toolsState}
               onToolsStateChange={handleToolsStateChange}
             />
@@ -506,11 +619,11 @@ export default function App() {
             <TravelPage
               isDarkMode={isDarkMode}
               isSidebarOpen={isSidebarOpen}
-              toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              toggleSidebar={toggleSidebar}
               selectedModel={selectedModel}
               selectedModelConfigId={selectedModelConfigId}
               isControlPanelOpen={isControlPanelOpen}
-              toggleControlPanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
+              toggleControlPanel={toggleControlPanel}
               onOpenModelSettings={() => openConnectionModal()}
             />
           }
@@ -518,25 +631,72 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      <div
-        className={`transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${isControlPanelOpen && activeTab === 'history' ? 'w-[300px] opacity-100' : 'w-0 opacity-0'}`}
-      >
-        <ControlPanel
-          onModelClick={() => openConnectionModal()}
-          selectedModel={selectedModel}
-          isDarkMode={isDarkMode}
-          enableReasoning={enableReasoning}
-          onEnableReasoningChange={setEnableReasoning}
-          currentInstruction={currentInstruction}
-          onInstructionChange={setCurrentInstruction}
-          tempSystemPrompt={tempSystemPrompt}
-          onTempSystemPromptChange={setTempSystemPrompt}
-          isOpen={isControlPanelOpen}
-          togglePanel={() => setIsControlPanelOpen(!isControlPanelOpen)}
-          toolsState={toolsState}
-          onToolsStateChange={handleToolsStateChange}
-        />
-      </div>
+      {/* Control panel: desktop rail or mobile overlay */}
+      {activeTab === 'history' &&
+        (!isMobile ? (
+          <div
+            className={cn(
+              'transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0',
+              showChatControlPanel ? 'w-[300px] opacity-100' : 'w-0 opacity-0',
+            )}
+          >
+            <ControlPanel
+              onModelClick={() => openConnectionModal()}
+              selectedModel={selectedModel}
+              isDarkMode={isDarkMode}
+              enableReasoning={enableReasoning}
+              onEnableReasoningChange={setEnableReasoning}
+              currentInstruction={currentInstruction}
+              onInstructionChange={setCurrentInstruction}
+              tempSystemPrompt={tempSystemPrompt}
+              onTempSystemPromptChange={setTempSystemPrompt}
+              isOpen={isControlPanelOpen}
+              togglePanel={toggleControlPanel}
+              toolsState={toolsState}
+              onToolsStateChange={handleToolsStateChange}
+            />
+          </div>
+        ) : (
+          <div
+            className={cn(
+              'fixed inset-0 z-40 transition-opacity duration-300',
+              isControlPanelOpen ? 'pointer-events-auto' : 'pointer-events-none',
+            )}
+            aria-hidden={!isControlPanelOpen}
+          >
+            <button
+              type="button"
+              className={cn(
+                'absolute inset-0 bg-black/50 transition-opacity duration-300',
+                isControlPanelOpen ? 'opacity-100' : 'opacity-0',
+              )}
+              onClick={() => setIsControlPanelOpen(false)}
+              aria-label="Close settings panel"
+            />
+            <div
+              className={cn(
+                'absolute inset-y-0 right-0 w-[min(300px,90vw)] shadow-2xl transition-transform duration-300 ease-in-out',
+                isControlPanelOpen ? 'translate-x-0' : 'translate-x-full',
+              )}
+            >
+              <ControlPanel
+                onModelClick={() => openConnectionModal()}
+                selectedModel={selectedModel}
+                isDarkMode={isDarkMode}
+                enableReasoning={enableReasoning}
+                onEnableReasoningChange={setEnableReasoning}
+                currentInstruction={currentInstruction}
+                onInstructionChange={setCurrentInstruction}
+                tempSystemPrompt={tempSystemPrompt}
+                onTempSystemPromptChange={setTempSystemPrompt}
+                isOpen={isControlPanelOpen}
+                togglePanel={toggleControlPanel}
+                toolsState={toolsState}
+                onToolsStateChange={handleToolsStateChange}
+              />
+            </div>
+          </div>
+        ))}
 
       <ConnectionModal
         isOpen={isConnectionModalOpen}

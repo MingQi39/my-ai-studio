@@ -34,7 +34,7 @@ export function ChatEmptyState({
     return (
       <div
         className={cn(
-          'flex-1 flex flex-col items-center justify-center w-full px-6 pt-20 pb-10',
+          'flex-1 flex flex-col items-center justify-center w-full px-4 sm:px-6 pt-12 sm:pt-20 pb-10',
           className,
         )}
       >
@@ -49,8 +49,8 @@ export function ChatEmptyState({
   return (
     <div
       className={cn(
-        'flex-1 flex flex-col items-center justify-center w-full px-6 animate-in fade-in duration-500',
-        isTravel ? 'max-w-3xl pt-20 pb-10' : 'pt-[20vh]',
+        'flex-1 flex flex-col items-center justify-center w-full px-4 sm:px-6 animate-in fade-in duration-500',
+        isTravel ? 'max-w-3xl pt-12 sm:pt-20 pb-10' : 'pt-[12vh] sm:pt-[20vh]',
         className,
       )}
     >
@@ -58,8 +58,8 @@ export function ChatEmptyState({
 
       {isTravel ? (
         <>
-          <h1 className="text-3xl font-bold mb-2 tracking-tight text-slate-800 dark:text-slate-100">{title}</h1>
-          {subtitle && <p className="text-slate-500 dark:text-slate-400 mb-10">{subtitle}</p>}
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2 tracking-tight text-slate-800 dark:text-slate-100 text-center">{title}</h1>
+          {subtitle && <p className="text-slate-500 dark:text-slate-400 mb-8 sm:mb-10 text-center px-2">{subtitle}</p>}
         </>
       ) : (
         <div className="text-center">
