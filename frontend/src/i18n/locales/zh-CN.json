@@ -17,6 +17,17 @@
     "appName": "Qi 的 AI Studio",
     "appOwner": "Qi 的工作室"
   },
+  "chat": {
+    "queue": {
+      "count": "{{count}} 条排队中",
+      "followUpPlaceholder": "添加后续消息…",
+      "dragHint": "拖动排序",
+      "dragHandle": "拖动调整顺序",
+      "edit": "编辑排队消息",
+      "remove": "移除排队消息"
+    },
+    "generationStopped": "已停止生成"
+  },
   "language": {
     "label": "语言",
     "switcherTitle": "选择语言"
@@ -61,6 +72,7 @@
     "untitledSession": "未命名会话",
     "messageCount": "{{count}} 条",
     "travelAgent": "旅行规划 Agent",
+    "fitnessAgent": "健身饮食 Agent",
     "settings": "设置",
     "lightMode": "浅色模式",
     "darkMode": "深色模式",
@@ -391,6 +403,130 @@
       "sessionRequired": "会话尚未就绪，请等待对话保存后再生成",
       "formalPlanStaleBanner": "对话已更新，正式规划书需重新生成",
       "formalPlanStaleHint": "旧会话无需新建对话，在当前会话点击「生成正式规划书」即可"
+    }
+  },
+  "fitness": {
+    "disclaimer": "本工具仅用于生活方式记录与热量估算，不能替代医疗或营养诊断建议。标记为「估算」的数据请谨慎参考。",
+    "sidebar": {
+      "backToWorkspace": "返回工作台",
+      "agentTitle": "健身饮食 Agent",
+      "subtitle": "记录与热量估算",
+      "chat": "记账与推荐",
+      "history": "记录历史",
+      "newChat": "新建记录",
+      "noSessions": "暂无记录",
+      "loadSessionFailed": "加载记录失败"
+    },
+    "strip": {
+      "today": "今日 · {{date}}",
+      "tapToOpen": "点击查看详情",
+      "consumed": "已摄入",
+      "goal": "目标",
+      "remaining": "剩余"
+    },
+    "panel": {
+      "title": "今日面板",
+      "subtitle": "目标、摄入与餐次记录",
+      "goal": "每日热量目标",
+      "save": "保存",
+      "saved": "目标已更新",
+      "saveFailed": "保存失败",
+      "refresh": "刷新",
+      "loadFailed": "加载今日数据失败",
+      "consumed": "已摄入",
+      "remaining": "剩余",
+      "entries": "今日餐次",
+      "noEntries": "今天还没有记录",
+      "noEntriesHint": "在对话中告诉 Agent 你吃了什么",
+      "total": "合计",
+      "deleteEntry": "删除记录",
+      "deleted": "记录已删除",
+      "deleteFailed": "删除失败"
+    },
+    "meal": {
+      "breakfast": "早餐",
+      "lunch": "午餐",
+      "dinner": "晚餐",
+      "snack": "加餐",
+      "other": "其他"
+    },
+    "source": {
+      "local": "本地库",
+      "usda": "USDA",
+      "web": "联网",
+      "estimate": "估算"
+    },
+    "chat": {
+      "placeholder": "例如：午饭吃了米饭一碗、番茄炒蛋…",
+      "recommendations": "推荐套餐",
+      "recommendationsHint": "仅推荐不入账，确认后才会写入日记",
+      "confirmMeal": "记第 {{index}} 套",
+      "totalKcal": "约 {{kcal}} kcal",
+      "loadingHistory": "正在加载对话历史…",
+      "thinking": "正在分析你的请求…",
+      "runningTool": "正在执行：{{tool}}",
+      "mealLogged": "已记入今日日记",
+      "sendFailed": "发送失败",
+      "requestFailed": "请求失败，请检查后端与模型配置",
+      "streamInterrupted": "连接中断，未收到完整回复",
+      "emptyReply": "已完成处理，但没有生成文字回复",
+      "modelRequired": "请先在设置中配置模型连接",
+      "progress": {
+        "working": "正在处理…",
+        "parseFoods": "正在解析食物条目…",
+        "foodStart": "正在处理当前食物…",
+        "localLookup": "正在查询本地热量库…",
+        "localValidate": "正在校验本地库热量…",
+        "usdaLookup": "正在联网查询 USDA 数据…",
+        "usdaValidate": "正在校验 USDA 热量…",
+        "webSearch": "正在联网搜索公开热量信息…",
+        "webExtract": "正在从联网结果提取热量…",
+        "llmEstimate": "未命中数据库，正在智能估算热量…",
+        "slow": "（该步骤耗时较长，继续处理中…）"
+      }
+    },
+    "prompts": {
+      "logLunch": {
+        "title": "记录午饭",
+        "desc": "告诉我吃了什么，我来估算",
+        "question": "你午饭吃了什么？请描述菜品和大致份量，我会先帮你估算热量，确认后再入账。",
+        "placeholder": "例如：米饭一碗、番茄炒蛋、半瓶可乐",
+        "sendTemplate": "我想记录午饭，吃了：{{answer}}"
+      },
+      "recommend": {
+        "title": "晚餐推荐",
+        "desc": "剩余约 {{remaining}} kcal，智能推荐套餐",
+        "question": "今天晚饭想吃什么类型？有没有忌口或偏好？（你目前剩余约 {{remaining}} kcal）",
+        "placeholder": "例如：清淡一点、不要辣、想吃蛋白质",
+        "sendTemplate": "请根据我的偏好推荐晚餐，剩余约 {{remaining}} kcal。我的要求是：{{answer}}"
+      },
+      "setGoal": {
+        "title": "设置目标",
+        "desc": "调整每日热量目标",
+        "question": "你想把每日热量目标设为多少 kcal？（当前目标：{{goal}} kcal）",
+        "placeholder": "例如：1600",
+        "sendTemplate": "把我的每日热量目标设为 {{answer}} kcal"
+      }
+    },
+    "hitl": {
+      "subtitle": "以下操作会写入你的日记或修改目标，请确认后再执行。",
+      "confirm": "确认执行",
+      "cancel": "取消",
+      "awaitingConfirmation": "等待你的确认",
+      "approveFailed": "确认失败，请重试",
+      "cancelled": "已取消，未写入任何数据。",
+      "goalUpdated": "每日热量目标已更新",
+      "entryDeleted": "日记记录已删除",
+      "logMealTitle": "确认入账",
+      "setGoalTitle": "确认修改目标",
+      "deleteEntryTitle": "确认删除记录",
+      "genericTitle": "确认操作",
+      "goalChange": "将每日热量目标从 {{from}} 调整为 {{to}}",
+      "goalSet": "将每日热量目标设为 {{goal}}",
+      "totalKcal": "合计约 {{kcal}}",
+      "deleteEntry": "删除记录 ID：{{id}}",
+      "replyPlaceholder": "回复「确认」或「取消」，也可点击上方确认卡片",
+      "replyHint": "当前有待确认操作，请回复「确认」或「取消」，或点击上方黄色确认卡片"
     }
   }
 }

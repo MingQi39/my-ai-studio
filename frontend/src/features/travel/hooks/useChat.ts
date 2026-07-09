@@ -190,7 +190,20 @@ export function useChat() {
   const cancelCurrentRequest = () => {
     currentClientRef.current?.cancel();
     currentClientRef.current = null;
-    useChatStore.getState().setGenerating(false);
+
+    const { messages, updateMessage, setGenerating } = useChatStore.getState();
+    const thinkingMarkers = ['🔄 正在连接 Agent…', '🔄 正在思考…', '🔍 正在分析并调用工具，请稍候…', '💭 正在推理中…', '✍️ 正在整理最终回复…'];
+    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+    if (lastAssistant) {
+      const hasPartialContent =
+        !!lastAssistant.content &&
+        !thinkingMarkers.includes(lastAssistant.content) &&
+        !lastAssistant.content.startsWith('❌');
+      updateMessage(lastAssistant.id, {
+        content: hasPartialContent ? lastAssistant.content : '已停止生成',
+      });
+    }
+    setGenerating(false);
   };
 
   return { sendMessage, cancelCurrentRequest };

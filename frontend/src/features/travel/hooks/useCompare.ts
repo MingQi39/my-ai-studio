@@ -270,5 +270,11 @@ export function useCompare() {
     clientRef.current = null;
   };
 
-  return { sendMessage };
+  const cancelCurrentRequest = () => {
+    clientRef.current?.cancel();
+    clientRef.current = null;
+    useChatStore.getState().setGenerating(false);
+  };
+
+  return { sendMessage, cancelCurrentRequest };
 };

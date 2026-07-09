@@ -77,3 +77,7 @@ wcwidth==0.3.0
 websockets==16.0
 markdown==3.10.2
 fpdf2==2.8.5
+langchain
+langchain-core
+langchain-openai
+langchain-community

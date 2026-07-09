@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MessageSquare, Settings, Moon, Sun, Sparkles, ChevronRight, LogOut, ChevronDown, Trash2, MapPin, ArrowLeft, Brain, Wrench, Plus } from 'lucide-react';
+import { MessageSquare, Settings, Moon, Sun, Sparkles, ChevronRight, LogOut, ChevronDown, Trash2, MapPin, ArrowLeft, Brain, Wrench, Plus, UtensilsCrossed } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -20,10 +20,12 @@ import { useTranslation } from 'react-i18next';
 import { User, SessionResponse, listSessions, deleteSession as apiDeleteSession } from '@/services/api';
 import { BrandLogo } from '@/components/BrandLogo';
 import { useChatStore } from '@/features/travel/stores/useChatStore';
+import { useFitnessChatStore } from '@/features/fitness/stores/useFitnessChatStore';
 import {
   listTravelSessions,
   removeTravelSession,
 } from '@/features/travel/services/api/sessions';
+import { listFitnessSessions, removeFitnessSession } from '@/features/fitness/services/api/sessions';
 
 interface AppSidebarProps {
   activeTab: string;
@@ -56,19 +58,28 @@ export function AppSidebar({
   const travelSubTab = location.pathname.startsWith('/travel/')
     ? location.pathname.replace(/^\/travel\/?/, '').split('/')[0] || 'chat'
     : 'chat';
+  const fitnessSubTab = location.pathname.startsWith('/fitness/')
+    ? location.pathname.replace(/^\/fitness\/?/, '').split('/')[0] || 'chat'
+    : 'chat';
   const [isHistoryOpen, setIsHistoryOpen] = useState(true);
   const [isTravelHistoryOpen, setIsTravelHistoryOpen] = useState(true);
+  const [isFitnessHistoryOpen, setIsFitnessHistoryOpen] = useState(true);
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [travelSessions, setTravelSessions] = useState<SessionResponse[]>([]);
+  const [fitnessSessions, setFitnessSessions] = useState<SessionResponse[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isLoadingTravelSessions, setIsLoadingTravelSessions] = useState(false);
+  const [isLoadingFitnessSessions, setIsLoadingFitnessSessions] = useState(false);
   const travelSessionId = useChatStore((state) => state.currentSessionId);
   const travelSessionListVersion = useChatStore((state) => state.sessionListVersion);
+  const fitnessSessionId = useFitnessChatStore((state) => state.currentSessionId);
+  const fitnessSessionListVersion = useFitnessChatStore((state) => state.sessionListVersion);
 
   // 确认对话框状态
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [sessionToDeleteIsTravel, setSessionToDeleteIsTravel] = useState(false);
+  const [sessionToDeleteIsFitness, setSessionToDeleteIsFitness] = useState(false);
 
   // 加载会话列表
   const loadSessions = async () => {
@@ -95,9 +106,21 @@ export function AppSidebar({
     }
   };
 
+  const loadFitnessSessions = async () => {
+    try {
+      setIsLoadingFitnessSessions(true);
+      const items = await listFitnessSessions();
+      setFitnessSessions(items);
+    } catch (error) {
+      console.error('Failed to load fitness sessions:', error);
+    } finally {
+      setIsLoadingFitnessSessions(false);
+    }
+  };
+
   // 当展开历史会话或触发器变化时加载
   useEffect(() => {
-    if (isHistoryOpen && activeTab !== 'travel-agent') {
+    if (isHistoryOpen && activeTab !== 'travel-agent' && activeTab !== 'fitness-agent') {
       loadSessions();
     }
   }, [isHistoryOpen, sessionRefreshTrigger, activeTab]);
@@ -108,6 +131,12 @@ export function AppSidebar({
     }
   }, [activeTab, isTravelHistoryOpen, sessionRefreshTrigger, travelSessionListVersion]);
 
+  useEffect(() => {
+    if (activeTab === 'fitness-agent' && isFitnessHistoryOpen) {
+      loadFitnessSessions();
+    }
+  }, [activeTab, isFitnessHistoryOpen, sessionRefreshTrigger, fitnessSessionListVersion]);
+
   const handleLogout = () => {
     if (onLogout) {
       onLogout();
@@ -115,10 +144,16 @@ export function AppSidebar({
     }
   };
 
-  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent, isTravel = false) => {
+  const handleDeleteSession = async (
+    sessionId: string,
+    e: React.MouseEvent,
+    isTravel = false,
+    isFitness = false,
+  ) => {
     e.stopPropagation();
     setSessionToDelete(sessionId);
     setSessionToDeleteIsTravel(isTravel);
+    setSessionToDeleteIsFitness(isFitness);
     setIsDeleteDialogOpen(true);
   };
 
@@ -132,6 +167,16 @@ export function AppSidebar({
     navigate('/travel/chat');
   };
 
+  const handleSelectFitnessSession = (sessionId: string) => {
+    navigate(`/fitness/chat/${sessionId}`);
+  };
+
+  const handleNewFitnessSession = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    useFitnessChatStore.getState().startNewSession();
+    navigate('/fitness/chat');
+  };
+
   const confirmDeleteSession = async () => {
     if (!sessionToDelete) return;
 
@@ -143,6 +188,14 @@ export function AppSidebar({
           useChatStore.getState().startNewSession();
           navigate('/travel/chat');
         }
+      } else if (sessionToDeleteIsFitness) {
+        await removeFitnessSession(sessionToDelete);
+        setFitnessSessions(prev => prev.filter(s => s.id !== sessionToDelete));
+        useFitnessChatStore.getState().bumpSessionList();
+        if (fitnessSessionId === sessionToDelete) {
+          useFitnessChatStore.getState().startNewSession();
+          navigate('/fitness/chat');
+        }
       } else {
         await apiDeleteSession(sessionToDelete);
         setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
@@ -152,13 +205,15 @@ export function AppSidebar({
         }
       }
 
-      toast.success(t('sidebar.sessionDeleted'));
+      toast.success(t('sidebar.sessionDeleted'), { id: 'session-deleted' });
       onSessionsChange?.();
     } catch (error) {
       console.error('Failed to delete session:', error);
       toast.error(t('sidebar.deleteFailed'));
     } finally {
       setSessionToDelete(null);
+      setSessionToDeleteIsTravel(false);
+      setSessionToDeleteIsFitness(false);
     }
   };
 
@@ -175,7 +230,7 @@ export function AppSidebar({
   };
 
   return (
-    <div className="w-full h-full flex flex-col whitespace-nowrap">
+    <div className="w-full h-full flex flex-col min-w-0">
 
       {/* Header */}
       <button
@@ -188,8 +243,8 @@ export function AppSidebar({
       </button>
 
       {/* Navigation - Scrollable */}
-      <ScrollArea className="flex-1 px-3 mt-4 custom-scrollbar">
-        <div className="flex flex-col gap-1 pb-4">
+      <ScrollArea className="flex-1 px-3 mt-4 min-w-0 w-full custom-scrollbar">
+        <div className="flex flex-col gap-1 pb-4 min-w-0 w-full max-w-full">
           {activeTab === 'travel-agent' ? (
             <>
               <button
@@ -245,7 +300,7 @@ export function AppSidebar({
                 </div>
 
                 <CollapsibleContent>
-                  <div className="pl-2 space-y-0.5">
+                  <div className="pl-2 space-y-0.5 min-w-0">
                     {isLoadingTravelSessions ? (
                       <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
                         {t('common.loading')}
@@ -257,48 +312,16 @@ export function AppSidebar({
                     ) : (
                       travelSessions
                         .slice(0, 20)
-                        .map((session) => {
-                          const isActive = travelSessionId === session.id;
-
-                          return (
-                            <div
-                              key={session.id}
-                              onClick={() => handleSelectTravelSession(session.id)}
-                              className={`
-                          relative group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer
-                          transition-all duration-200 text-xs
-                          ${isActive
-                              ? 'bg-blue-500/10 text-blue-500'
-                              : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]'
-                            }
-                        `}
-                            >
-                              {isActive && (
-                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full" />
-                              )}
-
-                              <MessageSquare size={14} className="flex-shrink-0" />
-
-                              <div className="flex-1 min-w-0">
-                                <p className="truncate font-medium">
-                                  {session.title || t('sidebar.untitledSession')}
-                                </p>
-                                <p className="text-[10px] text-[var(--text-secondary)] truncate">
-                                  {t('sidebar.messageCount', { count: session.message_count })} · {formatDate(session.updated_at)}
-                                </p>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={(e) => handleDeleteSession(session.id, e, true)}
-                                className="flex-shrink-0 p-1.5 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
-                                aria-label={t('sidebar.deleteSessionTitle')}
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          );
-                        })
+                        .map((session) => (
+                          <AgentSessionHistoryRow
+                            key={session.id}
+                            session={session}
+                            isActive={travelSessionId === session.id}
+                            formatDate={formatDate}
+                            onSelect={() => handleSelectTravelSession(session.id)}
+                            onDelete={(e) => handleDeleteSession(session.id, e, true)}
+                          />
+                        ))
                     )}
                   </div>
                 </CollapsibleContent>
@@ -327,6 +350,84 @@ export function AppSidebar({
               />
 
             </>
+          ) : activeTab === 'fitness-agent' ? (
+            <>
+              <button
+                onClick={() => navigate('/')}
+                className="flex items-center gap-2 px-3 h-[36px] rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors mb-2"
+              >
+                <ArrowLeft size={16} />
+                {t('fitness.sidebar.backToWorkspace')}
+              </button>
+
+              <p className="px-3 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                {t('sidebar.fitnessAgent')}
+              </p>
+
+              <NavButton
+                icon={<Plus size={20} />}
+                label={t('fitness.sidebar.newChat')}
+                id="fitness-new-chat"
+                isActive={fitnessSubTab === 'chat' && !fitnessSessionId}
+                onClick={() => handleNewFitnessSession()}
+              />
+
+              <Collapsible open={isFitnessHistoryOpen} onOpenChange={setIsFitnessHistoryOpen} className="mt-1">
+                <div className="flex items-center justify-between px-3 mb-1">
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = useFitnessChatStore.getState().currentSessionId;
+                        navigate(id ? `/fitness/chat/${id}` : '/fitness/chat');
+                      }}
+                      className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                        fitnessSubTab === 'chat' && fitnessSessionId
+                          ? 'text-blue-500'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <ChevronDown
+                        size={12}
+                        className={`transition-transform duration-200 ${isFitnessHistoryOpen ? 'rotate-180' : ''}`}
+                      />
+                      {t('fitness.sidebar.history')}
+                    </button>
+                  </CollapsibleTrigger>
+                  <button
+                    type="button"
+                    onClick={handleNewFitnessSession}
+                    className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    title={t('fitness.sidebar.newChat')}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+
+                <CollapsibleContent>
+                  <div className="pl-2 space-y-0.5 min-w-0">
+                    {isLoadingFitnessSessions ? (
+                      <div className="py-4 text-center text-xs text-[var(--text-secondary)]">{t('common.loading')}</div>
+                    ) : fitnessSessions.length === 0 ? (
+                      <div className="py-4 text-center text-xs text-[var(--text-secondary)]">{t('fitness.sidebar.noSessions')}</div>
+                    ) : (
+                      fitnessSessions
+                        .slice(0, 20)
+                        .map((session) => (
+                          <AgentSessionHistoryRow
+                            key={session.id}
+                            session={session}
+                            isActive={fitnessSessionId === session.id}
+                            formatDate={formatDate}
+                            onSelect={() => handleSelectFitnessSession(session.id)}
+                            onDelete={(e) => handleDeleteSession(session.id, e, false, true)}
+                          />
+                        ))
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </>
           ) : (
             <>
               {/* 历史会话 - 可折叠 */}
@@ -353,7 +454,7 @@ export function AppSidebar({
                 </CollapsibleTrigger>
 
                 <CollapsibleContent className="mt-1">
-                  <div className="pl-2 space-y-0.5">
+                  <div className="pl-2 space-y-0.5 min-w-0">
                     {isLoadingSessions ? (
                       <div className="py-4 text-center text-xs text-[var(--text-secondary)]">
                         {t('common.loading')}
@@ -366,50 +467,16 @@ export function AppSidebar({
                       sessions
                         .filter(session => session.message_count > 0)
                         .slice(0, 10)
-                        .map((session) => {
-                          const isActive = currentSessionId === session.id;
-
-                          return (
-                            <div
-                              key={session.id}
-                              onClick={() => {
-                                navigate(`/session/${session.id}`);
-                              }}
-                              className={`
-                          relative group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer
-                          transition-all duration-200 text-xs
-                          ${isActive
-                              ? 'bg-blue-500/10 text-blue-500'
-                              : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]'
-                            }
-                        `}
-                            >
-                              {isActive && (
-                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full" />
-                              )}
-
-                              <MessageSquare size={14} className="flex-shrink-0" />
-
-                              <div className="flex-1 min-w-0">
-                                <p className="truncate font-medium">
-                                  {session.title || t('sidebar.untitledSession')}
-                                </p>
-                                <p className="text-[10px] text-[var(--text-secondary)] truncate">
-                                  {t('sidebar.messageCount', { count: session.message_count })} · {formatDate(session.updated_at)}
-                                </p>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={(e) => handleDeleteSession(session.id, e)}
-                                className="flex-shrink-0 p-1.5 rounded opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
-                                aria-label={t('sidebar.deleteSessionTitle')}
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          );
-                        })
+                        .map((session) => (
+                          <AgentSessionHistoryRow
+                            key={session.id}
+                            session={session}
+                            isActive={currentSessionId === session.id}
+                            formatDate={formatDate}
+                            onSelect={() => navigate(`/session/${session.id}`)}
+                            onDelete={(e) => handleDeleteSession(session.id, e)}
+                          />
+                        ))
                     )}
                   </div>
                 </CollapsibleContent>
@@ -421,6 +488,14 @@ export function AppSidebar({
                 id="travel-agent"
                 isActive={activeTab === 'travel-agent'}
                 onClick={() => onTabChange('travel-agent')}
+                hasBadge
+              />
+              <NavButton
+                icon={<UtensilsCrossed size={20} />}
+                label={t('sidebar.fitnessAgent')}
+                id="fitness-agent"
+                isActive={activeTab === 'fitness-agent'}
+                onClick={() => onTabChange('fitness-agent')}
                 hasBadge
               />
             </>
@@ -514,6 +589,8 @@ export function AppSidebar({
         onClose={() => {
           setIsDeleteDialogOpen(false);
           setSessionToDelete(null);
+          setSessionToDeleteIsTravel(false);
+          setSessionToDeleteIsFitness(false);
         }}
         onConfirm={confirmDeleteSession}
         title={t('sidebar.deleteSessionTitle')}
@@ -533,18 +610,29 @@ interface NavButtonProps {
   id: string;
   isActive?: boolean;
   hasBadge?: boolean;
+  accent?: 'default' | 'emerald';
   onClick?: () => void;
 }
 
-function NavButton({ icon, label, isActive = false, hasBadge = false, onClick }: NavButtonProps) {
+function NavButton({
+  icon,
+  label,
+  isActive = false,
+  hasBadge = false,
+  accent = 'default',
+  onClick,
+}: NavButtonProps) {
+  const activeClasses =
+    accent === 'emerald'
+      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+      : 'bg-[var(--nav-active-bg)] text-[var(--nav-active-text)]';
+
   return (
     <button
       onClick={onClick}
       className={`
         flex items-center gap-3 px-3 h-[40px] rounded-lg text-sm font-medium transition-all w-full text-left group
-        ${isActive
-          ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-text)]'
-          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}
+        ${isActive ? activeClasses : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}
       `}
     >
       <span className={isActive ? '' : 'group-hover:text-[var(--text-primary)]'}>{icon}</span>
@@ -554,5 +642,60 @@ function NavButton({ icon, label, isActive = false, hasBadge = false, onClick }:
       )}
       <ChevronRight size={14} className={`transition-opacity ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
     </button>
+  );
+}
+
+interface AgentSessionHistoryRowProps {
+  session: SessionResponse;
+  isActive: boolean;
+  formatDate: (dateString: string) => string;
+  onSelect: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+}
+
+function AgentSessionHistoryRow({
+  session,
+  isActive,
+  formatDate,
+  onSelect,
+  onDelete,
+}: AgentSessionHistoryRowProps) {
+  const { t } = useTranslation();
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`
+        relative group grid w-full max-w-full grid-cols-[1rem_minmax(0,1fr)_2rem] items-center gap-x-2 px-2 py-2 rounded-md cursor-pointer
+        transition-all duration-200 text-xs
+        ${isActive
+          ? 'bg-blue-500/10 text-blue-500'
+          : 'hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]'}
+      `}
+    >
+      {isActive && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full" />
+      )}
+
+      <MessageSquare size={14} className="shrink-0" />
+
+      <div className="min-w-0 overflow-hidden">
+        <p className="truncate font-medium">
+          {session.title || t('sidebar.untitledSession')}
+        </p>
+        <p className="text-[10px] text-[var(--text-secondary)] truncate">
+          {t('sidebar.messageCount', { count: session.message_count })} · {formatDate(session.updated_at)}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onDelete}
+        className="flex h-7 w-7 shrink-0 items-center justify-center justify-self-end rounded text-[var(--text-secondary)] opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto hover:bg-red-500/10 hover:text-red-500 transition-all"
+        aria-label={t('sidebar.deleteSessionTitle')}
+      >
+        <Trash2 size={12} className="shrink-0" />
+      </button>
+    </div>
   );
 }

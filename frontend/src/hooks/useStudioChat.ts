@@ -530,7 +530,7 @@ export function useStudioChat({
         onSessionChange(null);
         setMessages([]);
       }
-      toast.success(t('sidebar.sessionDeleted'));
+      toast.success(t('sidebar.sessionDeleted'), { id: 'session-deleted' });
       onSessionsChange?.();
     } catch (error) {
       console.error('Failed to delete session:', error);
@@ -545,8 +545,14 @@ export function useStudioChat({
     onSessionChange(sessionId);
   };
 
-  const handleSendMessage = async () => {
-    if (!input.trim() && uploadedImages.length === 0) return;
+  const handleSendMessage = async (override?: {
+    content?: string;
+    images?: UploadedStudioImage[];
+  }) => {
+    const messageContent = (override?.content ?? input).trim();
+    const imagesToSend = override?.images ?? uploadedImages;
+
+    if (!messageContent && imagesToSend.length === 0) return;
 
     if (hasModelConfig === false) {
       toast.error(t('workspace.needModelConfig'));
@@ -559,12 +565,11 @@ export function useStudioChat({
       return;
     }
 
-    if (uploadedImages.some((image) => image.uploading)) {
+    if (imagesToSend.some((image) => image.uploading)) {
       toast.info(t('workspace.waitingUpload'));
       return;
     }
 
-    const messageContent = input.trim();
     let sessionId = currentSessionId;
 
     if (!sessionId) {
@@ -600,8 +605,8 @@ export function useStudioChat({
       role: 'user',
       content: messageContent,
       images:
-        uploadedImages.length > 0
-          ? uploadedImages.map((image) => ({
+        imagesToSend.length > 0
+          ? imagesToSend.map((image) => ({
               id: image.id,
               url: image.url,
               name: image.name,
@@ -610,9 +615,11 @@ export function useStudioChat({
     };
 
     setMessages((prev) => [...prev, userMsg]);
-    setInput('');
-    const currentImages = [...uploadedImages];
-    setUploadedImages([]);
+    if (!override) {
+      setInput('');
+      setUploadedImages([]);
+    }
+    const currentImages = [...imagesToSend];
     setIsGenerating(true);
     setIsFirstMessage(false);
 

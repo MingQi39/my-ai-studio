@@ -14,9 +14,9 @@ import { toast } from 'sonner';
 import {
   AssistantMessageShell,
   ChatEmptyState,
-  ChatInputArea,
   ChatJumpToBottom,
   GeneratingIndicator,
+  QueuedChatInput,
   UserMessageBubble,
 } from '@/components/chat';
 import { MessageContent } from '@/components/MessageContent';
@@ -48,8 +48,8 @@ export function TravelChatView({
   const { messages, isGenerating, isLoadingHistory, chatMode, setChatMode, currentSessionId } = useChatStore();
   useTravelSessionRoute();
   useTravelSessionRestore();
-  const { sendMessage: sendChatMessage } = useChat();
-  const { sendMessage: sendCompareMessage } = useCompare();
+  const { sendMessage: sendChatMessage, cancelCurrentRequest: cancelChatRequest } = useChat();
+  const { sendMessage: sendCompareMessage, cancelCurrentRequest: cancelCompareRequest } = useCompare();
   const [inputValue, setInputValue] = useState('');
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [exportToolbarOpen, setExportToolbarOpen] = useState(false);
@@ -59,22 +59,15 @@ export function TravelChatView({
     resetKey: currentSessionId,
   });
 
-  const handleSend = (textStr: string | React.FormEvent) => {
+  const handleSend = async (textStr: string | React.FormEvent) => {
     const text = typeof textStr === 'string' ? textStr : inputValue;
-    if (!text.trim() || isGenerating) return;
+    if (!text.trim()) return;
 
-    setInputValue('');
     scrollToBottom('auto');
     if (isCompareMode) {
-      sendCompareMessage(text).catch((err) => {
-        console.error(err);
-        toast.error(err instanceof Error ? err.message : '发送失败');
-      });
+      await sendCompareMessage(text);
     } else {
-      sendChatMessage(text).catch((err) => {
-        console.error(err);
-        toast.error(err instanceof Error ? err.message : '发送失败');
-      });
+      await sendChatMessage(text);
     }
   };
 
@@ -135,12 +128,19 @@ export function TravelChatView({
       <div
         className={`w-full mx-auto px-3 sm:px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shrink-0 bg-gradient-to-t from-white via-white to-transparent dark:from-[#0F172A] dark:via-[#0F172A] ${isCompareMode ? 'max-w-7xl' : 'max-w-4xl'}`}
       >
-        <ChatInputArea
+        <QueuedChatInput
           layout="travel"
           value={inputValue}
           onChange={setInputValue}
-          onSubmit={() => handleSend(inputValue)}
-          disabled={isGenerating}
+          isBusy={isGenerating}
+          onStop={() => (isCompareMode ? cancelCompareRequest() : cancelChatRequest())}
+          getPayload={(value) => value.trim() || null}
+          onSendPayload={async (text) => {
+            setInputValue('');
+            await handleSend(text);
+          }}
+          getQueuedLabel={(payload) => payload}
+          onQueuedEdit={(payload) => setInputValue(payload)}
           placeholder="发送消息..."
           innerClassName="flex flex-col relative w-full shadow-sm bg-white dark:bg-[#1E293B] border border-slate-300 dark:border-slate-700 rounded-2xl focus-within:ring-2 focus-within:ring-[#3B82F6]/50 focus-within:border-[#3B82F6] transition-all overflow-hidden"
           header={

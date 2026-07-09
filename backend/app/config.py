@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     HTTP_TIMEOUT_SECONDS: int = 10
     TAVILY_MAX_RESULTS: int = 5
 
+    # Fitness Agent
+    USDA_FDC_API_KEY: str = ""
+    FITNESS_DEFAULT_TIMEZONE: str = "Asia/Shanghai"
+    FITNESS_DEFAULT_CALORIE_GOAL: int = 1800
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def validate_cors_origins(cls, v: str | list[str]) -> str:

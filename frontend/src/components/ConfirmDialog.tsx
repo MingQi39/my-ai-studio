@@ -1,12 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface ConfirmDialogProps {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
     title: string;
     message: string;
     confirmText?: string;
@@ -27,13 +27,25 @@ export function ConfirmDialog({
     type = 'danger'
 }: ConfirmDialogProps) {
     const { t } = useTranslation();
+    const [isConfirming, setIsConfirming] = useState(false);
     const safeConfirm = confirmText ?? t('common.confirm');
     const safeCancel = cancelText ?? t('common.cancel');
+
+    useEffect(() => {
+        if (!isOpen) setIsConfirming(false);
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
-    const handleConfirm = () => {
-        onConfirm();
-        onClose();
+    const handleConfirm = async () => {
+        if (isConfirming) return;
+        setIsConfirming(true);
+        try {
+            await onConfirm();
+            onClose();
+        } finally {
+            setIsConfirming(false);
+        }
     };
 
     const getTypeColor = () => {
@@ -54,7 +66,7 @@ export function ConfirmDialog({
             {/* Backdrop */}
             <div
                 className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 animate-in fade-in duration-200"
-                onClick={onClose}
+                onClick={isConfirming ? undefined : onClose}
             />
 
             {/* Dialog */}
@@ -87,7 +99,8 @@ export function ConfirmDialog({
                         {/* Close button */}
                         <button
                             onClick={onClose}
-                            className="flex-shrink-0 p-1 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                            disabled={isConfirming}
+                            className="flex-shrink-0 p-1 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 disabled:pointer-events-none"
                         >
                             <X size={20} />
                         </button>
@@ -98,12 +111,14 @@ export function ConfirmDialog({
                         <Button
                             onClick={onClose}
                             variant="ghost"
+                            disabled={isConfirming}
                             className="flex-1 h-10 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
                         >
                             {safeCancel}
                         </Button>
                         <Button
                             onClick={handleConfirm}
+                            disabled={isConfirming}
                             className={`flex-1 h-10 rounded-lg font-medium ${type === 'danger'
                                     ? 'bg-red-500 hover:bg-red-600 text-white'
                                     : type === 'warning'
@@ -111,7 +126,7 @@ export function ConfirmDialog({
                                         : 'bg-blue-500 hover:bg-blue-600 text-white'
                                 }`}
                         >
-                            {safeConfirm}
+                            {isConfirming ? <Loader2 size={16} className="animate-spin" /> : safeConfirm}
                         </Button>
                     </div>
                 </div>

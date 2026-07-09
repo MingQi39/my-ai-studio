@@ -8,7 +8,9 @@ import { ControlPanel, DEFAULT_CHAT_TOOLS_STATE, type ChatToolsState } from './c
 import { ConnectionModal } from './components/ConnectionModal';
 import { AuthPage } from './components/AuthPage';
 import { TravelPage } from './pages/TravelPage';
+import { FitnessPage } from './pages/FitnessPage';
 import { branding } from './features/travel/config/branding';
+import { fitnessBranding } from './features/fitness/config/branding';
 import { useSessionRoute } from './hooks/useSessionRoute';
 import { useIsMobile } from './components/ui/use-mobile';
 import { cn } from './components/ui/utils';
@@ -114,11 +116,16 @@ export default function App() {
   const isMobile = useIsMobile();
 
   const isTravelRoute = location.pathname.startsWith('/travel');
-  const activeTab = isTravelRoute ? 'travel-agent' : 'history';
+  const isFitnessRoute = location.pathname.startsWith('/fitness');
+  const activeTab = isFitnessRoute ? 'fitness-agent' : isTravelRoute ? 'travel-agent' : 'history';
 
   useEffect(() => {
-    document.title = isTravelRoute ? branding.documentTitle : t('common.appName');
-  }, [t, i18n.language, isTravelRoute]);
+    document.title = isTravelRoute
+      ? branding.documentTitle
+      : isFitnessRoute
+        ? fitnessBranding.documentTitle
+        : t('common.appName');
+  }, [t, i18n.language, isTravelRoute, isFitnessRoute]);
 
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
@@ -369,6 +376,9 @@ export default function App() {
     } else if (tab === 'travel-agent') {
       navigate('/travel/chat');
       setIsControlPanelOpen(true);
+    } else if (tab === 'fitness-agent') {
+      navigate('/fitness/chat');
+      setIsControlPanelOpen(true);
     } else if (tab === 'history') {
       navigate('/');
       setIsControlPanelOpen(true);
@@ -617,6 +627,21 @@ export default function App() {
           path="/travel/*"
           element={
             <TravelPage
+              isDarkMode={isDarkMode}
+              isSidebarOpen={isSidebarOpen}
+              toggleSidebar={toggleSidebar}
+              selectedModel={selectedModel}
+              selectedModelConfigId={selectedModelConfigId}
+              isControlPanelOpen={isControlPanelOpen}
+              toggleControlPanel={toggleControlPanel}
+              onOpenModelSettings={() => openConnectionModal()}
+            />
+          }
+        />
+        <Route
+          path="/fitness/*"
+          element={
+            <FitnessPage
               isDarkMode={isDarkMode}
               isSidebarOpen={isSidebarOpen}
               toggleSidebar={toggleSidebar}

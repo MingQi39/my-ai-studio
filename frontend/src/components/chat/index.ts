@@ -1,5 +1,7 @@
 export { UserMessageBubble } from './UserMessageBubble';
 export { ChatInputArea } from './ChatInputArea';
+export { QueuedChatInput } from './QueuedChatInput';
+export { MessageQueuePanel } from './MessageQueuePanel';
 export { ChatJumpToBottom } from './ChatJumpToBottom';
 export { ChatEmptyState, type ChatQuickPrompt } from './ChatEmptyState';
 export { GeneratingIndicator } from './GeneratingIndicator';

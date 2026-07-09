@@ -17,6 +17,17 @@
     "appName": "Qi's AI Studio",
     "appOwner": "Qi's Studio"
   },
+  "chat": {
+    "queue": {
+      "count": "{{count}} Queued",
+      "followUpPlaceholder": "Add a follow-up…",
+      "dragHint": "Drag to reorder",
+      "dragHandle": "Drag to reorder",
+      "edit": "Edit queued message",
+      "remove": "Remove queued message"
+    },
+    "generationStopped": "Generation stopped"
+  },
   "language": {
     "label": "Language",
     "switcherTitle": "Select language"
@@ -61,6 +72,7 @@
     "untitledSession": "Untitled session",
     "messageCount": "{{count}} msgs",
     "travelAgent": "Travel Agent",
+    "fitnessAgent": "Fitness Agent",
     "settings": "Settings",
     "lightMode": "Light mode",
     "darkMode": "Dark mode",
@@ -391,6 +403,130 @@
       "sessionRequired": "Session is not ready yet — wait for the chat to save before generating",
       "formalPlanStaleBanner": "Chat changed — regenerate the formal plan",
       "formalPlanStaleHint": "No need for a new chat — click Generate formal plan in this session"
+    }
+  },
+  "fitness": {
+    "disclaimer": "For lifestyle logging and calorie estimates only — not medical advice. Treat \"estimate\" labels with caution.",
+    "sidebar": {
+      "backToWorkspace": "Back to workspace",
+      "agentTitle": "Fitness Agent",
+      "subtitle": "Logging & calorie estimates",
+      "chat": "Log & recommend",
+      "history": "History",
+      "newChat": "New log",
+      "noSessions": "No logs yet",
+      "loadSessionFailed": "Failed to load history"
+    },
+    "strip": {
+      "today": "Today · {{date}}",
+      "tapToOpen": "Tap for details",
+      "consumed": "Consumed",
+      "goal": "Goal",
+      "remaining": "Left"
+    },
+    "panel": {
+      "title": "Today panel",
+      "subtitle": "Goal, intake & meal records",
+      "goal": "Daily calorie goal",
+      "save": "Save",
+      "saved": "Goal updated",
+      "saveFailed": "Save failed",
+      "refresh": "Refresh",
+      "loadFailed": "Failed to load today's data",
+      "consumed": "Consumed",
+      "remaining": "Remaining",
+      "entries": "Today's meals",
+      "noEntries": "No records today",
+      "noEntriesHint": "Tell the agent what you ate in chat",
+      "total": "Total",
+      "deleteEntry": "Delete entry",
+      "deleted": "Entry deleted",
+      "deleteFailed": "Delete failed"
+    },
+    "meal": {
+      "breakfast": "Breakfast",
+      "lunch": "Lunch",
+      "dinner": "Dinner",
+      "snack": "Snack",
+      "other": "Other"
+    },
+    "source": {
+      "local": "Local",
+      "usda": "USDA",
+      "web": "Web",
+      "estimate": "Estimate"
+    },
+    "chat": {
+      "placeholder": "e.g. lunch: rice bowl, tomato & eggs…",
+      "recommendations": "Meal options",
+      "recommendationsHint": "Recommendations only — confirm to log",
+      "confirmMeal": "Log option {{index}}",
+      "totalKcal": "~{{kcal}} kcal",
+      "loadingHistory": "Loading chat history…",
+      "thinking": "Analyzing your request…",
+      "runningTool": "Running: {{tool}}",
+      "mealLogged": "Logged to today's diary",
+      "sendFailed": "Send failed",
+      "requestFailed": "Request failed — check backend & model config",
+      "streamInterrupted": "Connection interrupted",
+      "emptyReply": "Done, but no text reply was generated",
+      "modelRequired": "Configure a model connection in Settings first",
+      "progress": {
+        "working": "Working…",
+        "parseFoods": "Parsing food items…",
+        "foodStart": "Processing current food item…",
+        "localLookup": "Looking up local calorie DB…",
+        "localValidate": "Validating local DB calories…",
+        "usdaLookup": "Searching USDA data online…",
+        "usdaValidate": "Validating USDA calories…",
+        "webSearch": "Searching the web for calorie references…",
+        "webExtract": "Extracting calories from web results…",
+        "llmEstimate": "No reliable hit, estimating with model…",
+        "slow": "(This step is taking longer than usual, still working...)"
+      }
+    },
+    "prompts": {
+      "logLunch": {
+        "title": "Log lunch",
+        "desc": "Tell me what you ate — I'll estimate calories",
+        "question": "What did you have for lunch? Describe the dishes and portions. I'll estimate calories first, then log after you confirm.",
+        "placeholder": "e.g. rice bowl, tomato & eggs, half a cola",
+        "sendTemplate": "I'd like to log lunch. I had: {{answer}}"
+      },
+      "recommend": {
+        "title": "Dinner ideas",
+        "desc": "About {{remaining}} kcal left — smart meal picks",
+        "question": "What kind of dinner are you in the mood for? Any restrictions or preferences? (You have about {{remaining}} kcal left today.)",
+        "placeholder": "e.g. light, no spicy, more protein",
+        "sendTemplate": "Recommend dinner based on my preferences. About {{remaining}} kcal left. My preferences: {{answer}}"
+      },
+      "setGoal": {
+        "title": "Set goal",
+        "desc": "Update daily calorie target",
+        "question": "What daily calorie goal would you like? (Current goal: {{goal}} kcal)",
+        "placeholder": "e.g. 1600",
+        "sendTemplate": "Set my daily calorie goal to {{answer}} kcal"
+      }
+    },
+    "hitl": {
+      "subtitle": "This will update your diary or goal. Please confirm before proceeding.",
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "awaitingConfirmation": "Awaiting your confirmation",
+      "approveFailed": "Confirmation failed. Please try again.",
+      "cancelled": "Cancelled. Nothing was saved.",
+      "goalUpdated": "Daily calorie goal updated",
+      "entryDeleted": "Diary entry deleted",
+      "logMealTitle": "Confirm log",
+      "setGoalTitle": "Confirm goal change",
+      "deleteEntryTitle": "Confirm delete",
+      "genericTitle": "Confirm action",
+      "goalChange": "Change daily goal from {{from}} to {{to}}",
+      "goalSet": "Set daily goal to {{goal}}",
+      "totalKcal": "Total about {{kcal}}",
+      "deleteEntry": "Delete entry ID: {{id}}",
+      "replyPlaceholder": "Reply \"confirm\" or \"cancel\", or use the card above",
+      "replyHint": "An action is awaiting confirmation. Reply \"confirm\" or \"cancel\", or use the yellow card above."
     }
   }
 }

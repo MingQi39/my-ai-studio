@@ -26,13 +26,15 @@ import {
   ChatEmptyState,
   ChatInputArea,
   ChatJumpToBottom,
+  MessageQueuePanel,
   StudioChatMessageList,
   StudioLaunchpad,
 } from "@/components/chat";
 import { ToolToggle, type ChatToolsState, CHAT_TOOLS_AVAILABLE } from "@/components/ControlPanel";
 import { ActiveModelBadge } from "@/components/ActiveModelBadge";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
-import { useStudioChat } from "@/hooks/useStudioChat";
+import { useMessageQueue } from "@/hooks/useMessageQueue";
+import { useStudioChat, type UploadedStudioImage } from "@/hooks/useStudioChat";
 
 interface MainWorkspaceProps {
   isSidebarOpen: boolean;
@@ -79,6 +81,11 @@ export function MainWorkspace({
 }: MainWorkspaceProps) {
   if (hidden) return null;
 
+  type StudioQueuePayload = {
+    text: string;
+    images: UploadedStudioImage[];
+  };
+
   const { t } = useTranslation();
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
@@ -119,6 +126,33 @@ export function MainWorkspace({
     modelConfigId,
     toolsState,
   });
+
+  const { queue, submit, remove, reorder } = useMessageQueue<StudioQueuePayload>({
+    isBusy: isGenerating,
+    send: async (payload) => {
+      await handleSendMessage({
+        content: payload.text,
+        images: payload.images,
+      });
+    },
+  });
+
+  const handleSubmitMessage = () => {
+    const text = input.trim();
+    if (!text && uploadedImages.length === 0) return;
+
+    const payload: StudioQueuePayload = {
+      text,
+      images: [...uploadedImages],
+    };
+
+    void submit(payload).then((result) => {
+      if (result === "sent" || result === "queued") {
+        setInput("");
+        setUploadedImages([]);
+      }
+    });
+  };
 
   const { scrollContainerRef, scrollSentinelRef, showJumpButton, scrollToBottom } = useChatAutoScroll({
     deps: [messages, isGenerating],
@@ -238,13 +272,25 @@ export function MainWorkspace({
         {showJumpButton && messages.length > 0 && <ChatJumpToBottom onClick={() => scrollToBottom("smooth")} />}
 
         <div className="flex-shrink-0 w-full bg-[var(--bg-main)] px-3 sm:px-4 py-3 sm:py-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="w-full max-w-[800px] mx-auto">
+          <div className="w-full max-w-[800px] mx-auto space-y-2">
+            <MessageQueuePanel
+              queue={queue}
+              getLabel={(payload) =>
+                payload.text ||
+                t("workspace.imageDialog", { defaultValue: "图片对话" }) +
+                  (payload.images.length > 0 ? ` (${payload.images.length})` : "")
+              }
+              onRemove={remove}
+              onReorder={reorder}
+              onEdit={(_id, payload) => {
+                remove(_id);
+                setInput(payload.text);
+                setUploadedImages(payload.images);
+              }}
+            />
             <div
               className={cn(
-                "relative rounded-2xl sm:rounded-[28px] p-2 flex flex-col gap-1 border transition-all duration-300",
-                isGenerating
-                  ? "opacity-50 pointer-events-none grayscale"
-                  : "focus-within:ring-1 focus-within:ring-[var(--border-hover)]",
+                "relative rounded-2xl sm:rounded-[28px] p-2 flex flex-col gap-1 border transition-all duration-300 focus-within:ring-1 focus-within:ring-[var(--border-hover)]",
               )}
               style={{
                 backgroundColor: "var(--bg-card)",
@@ -258,10 +304,11 @@ export function MainWorkspace({
                 layout="studio"
                 value={input}
                 onChange={setInput}
-                onSubmit={handleSendMessage}
-                disabled={isGenerating}
+                onSubmit={handleSubmitMessage}
                 canSubmit={!!input.trim() || uploadedImages.length > 0}
-                placeholder={t("workspace.promptPlaceholder")}
+                placeholder={
+                  isGenerating ? t("chat.queue.followUpPlaceholder") : t("workspace.promptPlaceholder")
+                }
                 textareaRef={textareaRef}
                 textareaMaxHeight="200px"
                 prefix={
@@ -411,7 +458,7 @@ export function MainWorkspace({
 
                       <Button
                         type="button"
-                        onClick={isGenerating ? handleStopGeneration : handleSendMessage}
+                        onClick={isGenerating ? handleStopGeneration : handleSubmitMessage}
                         disabled={!isGenerating && !input.trim() && uploadedImages.length === 0}
                         aria-label={isGenerating ? t("workspace.stopGenerate") : t("workspace.send")}
                         className={cn(

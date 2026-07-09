@@ -6,19 +6,22 @@ Models use UUID primary keys and include timestamp mixins.
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -44,6 +47,16 @@ class SessionType(str, enum.Enum):
 
     chat = "chat"
     travel = "travel"
+    fitness = "fitness"
+
+
+class FitnessMealType(str, enum.Enum):
+    """Fitness diary meal type enumeration."""
+
+    breakfast = "breakfast"
+    lunch = "lunch"
+    dinner = "dinner"
+    snack = "snack"
 
 
 class AdapterType(str, enum.Enum):
@@ -493,3 +506,37 @@ class SystemInstruction(Base, UUIDMixin, TimestampMixin):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="system_instructions")
+
+
+class FitnessGoal(Base, UUIDMixin, TimestampMixin):
+    """Per-user daily calorie goal for the Fitness Agent."""
+
+    __tablename__ = "fitness_goals"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_fitness_goals_user_id"),)
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    daily_calorie_goal: Mapped[int] = mapped_column(Integer, nullable=False, default=1800)
+
+
+class FitnessDiaryEntry(Base, UUIDMixin, TimestampMixin):
+    """Daily meal diary entry for the Fitness Agent."""
+
+    __tablename__ = "fitness_diary_entries"
+    __table_args__ = (
+        Index("ix_fitness_diary_user_date", "user_id", "date"),
+        Index("ix_fitness_diary_session_id", "session_id"),
+    )
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    meal_type: Mapped[FitnessMealType] = mapped_column(Enum(FitnessMealType), nullable=False)
+    items: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    total_kcal: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    session_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True
+    )

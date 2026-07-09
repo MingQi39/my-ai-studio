@@ -1,4 +1,6 @@
-import { Send } from 'lucide-react';
+import { useRef } from 'react';
+import { Send, StopCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/components/ui/utils';
 
 export type ChatInputAreaProps = {
@@ -7,6 +9,8 @@ export type ChatInputAreaProps = {
   onSubmit: () => void;
   disabled?: boolean;
   canSubmit?: boolean;
+  isGenerating?: boolean;
+  onStop?: () => void;
   placeholder?: string;
   header?: React.ReactNode;
   prefix?: React.ReactNode;
@@ -28,6 +32,8 @@ export function ChatInputArea({
   onSubmit,
   disabled = false,
   canSubmit,
+  isGenerating = false,
+  onStop,
   placeholder,
   header,
   prefix,
@@ -42,10 +48,37 @@ export function ChatInputArea({
   textareaRows = 1,
   textareaMaxHeight,
 }: ChatInputAreaProps) {
+  const { t } = useTranslation();
   const submitEnabled = canSubmit ?? !!value.trim();
+  const showStopButton = isGenerating && !!onStop;
+  const isComposingRef = useRef(false);
+  const justEndedCompositionRef = useRef(false);
+
+  const handleCompositionStart = () => {
+    isComposingRef.current = true;
+    justEndedCompositionRef.current = false;
+  };
+
+  const handleCompositionEnd = () => {
+    isComposingRef.current = false;
+    // Some browsers fire Enter keydown right after compositionend with isComposing=false.
+    justEndedCompositionRef.current = true;
+    window.setTimeout(() => {
+      justEndedCompositionRef.current = false;
+    }, 0);
+  };
+
+  const isImeComposing = (event: React.KeyboardEvent<HTMLTextAreaElement>) =>
+    event.nativeEvent.isComposing ||
+    isComposingRef.current ||
+    justEndedCompositionRef.current ||
+    event.keyCode === 229;
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
+      if (isImeComposing(event)) {
+        return;
+      }
       event.preventDefault();
       if (!disabled && submitEnabled) {
         onSubmit();
@@ -58,6 +91,8 @@ export function ChatInputArea({
       ref={textareaRef}
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      onCompositionStart={handleCompositionStart}
+      onCompositionEnd={handleCompositionEnd}
       onKeyDown={handleKeyDown}
       placeholder={placeholder}
       disabled={disabled}
@@ -94,16 +129,25 @@ export function ChatInputArea({
             {sendButton ?? (
               <button
                 type="button"
-                onClick={onSubmit}
-                disabled={!submitEnabled || disabled}
+                onClick={showStopButton ? onStop : onSubmit}
+                disabled={showStopButton ? false : !submitEnabled || disabled}
+                aria-label={
+                  showStopButton ? t('workspace.stopGenerate') : t('workspace.send', { defaultValue: 'Send' })
+                }
                 className={cn(
                   'absolute right-3 bottom-3 p-2 rounded-xl transition-all flex items-center justify-center',
-                  submitEnabled && !disabled
-                    ? 'bg-[#3B82F6] hover:bg-[#2563EB] text-white shadow-md'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed',
+                  showStopButton
+                    ? 'bg-red-500 hover:bg-red-600 text-white shadow-md'
+                    : submitEnabled && !disabled
+                      ? 'bg-[#3B82F6] hover:bg-[#2563EB] text-white shadow-md'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed',
                 )}
               >
-                <Send size={18} />
+                {showStopButton ? (
+                  <StopCircle size={18} className="fill-current" />
+                ) : (
+                  <Send size={18} />
+                )}
               </button>
             )}
           </div>
