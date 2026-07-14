@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/components/ui/utils';
 import { toast } from 'sonner';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { SystemInstructionModal } from '@/components/SystemInstructionModal';
 import { SystemInstructionResponse } from '@/services/api';
 
@@ -116,15 +117,16 @@ export function ControlPanel({
           >
             <div className="flex justify-between items-start">
               <div className="overflow-hidden flex flex-col gap-1 min-w-0">
-                <div className="font-mono text-[10px] text-[var(--text-secondary)] truncate">
+                <EllipsisTooltip className="font-mono text-[10px] text-[var(--text-secondary)]">
                   {selectedModel ? selectedModel.toLowerCase().replace(/\s+/g, '-') : '—'}
-                </div>
-                <h3
-                  className="text-[var(--text-primary)] font-bold text-sm truncate pr-2"
-                  title={selectedModel || undefined}
+                </EllipsisTooltip>
+                <EllipsisTooltip
+                  as="h3"
+                  className="pr-2 text-sm font-bold text-[var(--text-primary)]"
+                  tooltip={selectedModel || undefined}
                 >
                   {selectedModel || t('controlPanel.selectModel')}
-                </h3>
+                </EllipsisTooltip>
               </div>
               <Zap size={18} className="text-blue-500 fill-blue-500 flex-shrink-0" />
             </div>
@@ -157,9 +159,9 @@ export function ControlPanel({
                   {t('common.clear')}
                 </button>
               </div>
-              <p className="text-xs text-[var(--text-secondary)] line-clamp-3">
+              <EllipsisTooltip as="p" lines={3} className="text-xs text-[var(--text-secondary)]">
                 {currentInstruction.content}
-              </p>
+              </EllipsisTooltip>
             </div>
           ) : (
             <Textarea

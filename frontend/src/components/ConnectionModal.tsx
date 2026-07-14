@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/components/ui/utils';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import {
   createModelConfig,
   updateModelConfig,
@@ -405,7 +406,9 @@ export function ConnectionModal({ isOpen, onClose, isDarkMode, onConfigSave, sel
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[var(--border-color)]">
           <div className="flex flex-col gap-0.5 min-w-0 pr-2">
             <h2 className="text-lg font-semibold text-[var(--text-primary)] tracking-tight">{t('connection.title')}</h2>
-            <p className="text-xs text-[var(--text-secondary)] truncate">{t('connection.subtitle')}</p>
+            <EllipsisTooltip as="p" className="text-xs text-[var(--text-secondary)]">
+              {t('connection.subtitle')}
+            </EllipsisTooltip>
           </div>
           <button
             onClick={onClose}
@@ -474,20 +477,26 @@ export function ConnectionModal({ isOpen, onClose, isDarkMode, onConfigSave, sel
                       {provider.icon}
                     </div>
                     <div className="flex flex-col min-w-0 flex-1">
-                      <span className={cn(
-                        "text-sm font-medium truncate",
-                        isSelected ? "text-blue-900 dark:text-white" : "text-[var(--text-primary)]"
-                      )}>
+                      <EllipsisTooltip
+                        className={cn(
+                          'text-sm font-medium',
+                          isSelected ? 'text-blue-900 dark:text-white' : 'text-[var(--text-primary)]',
+                        )}
+                      >
                         {provider.name}
-                      </span>
+                      </EllipsisTooltip>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {provider.description && (
-                          <span className={cn(
-                            "text-[10px] truncate",
-                            isSelected ? "text-blue-700/80 dark:text-gray-400" : "text-[var(--text-secondary)]"
-                          )}>
+                          <EllipsisTooltip
+                            className={cn(
+                              'text-[10px]',
+                              isSelected
+                                ? 'text-blue-700/80 dark:text-gray-400'
+                                : 'text-[var(--text-secondary)]',
+                            )}
+                          >
                             {t(provider.description)}
-                          </span>
+                          </EllipsisTooltip>
                         )}
                         {hasSavedConfig && (
                           <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">
@@ -593,7 +602,9 @@ export function ConnectionModal({ isOpen, onClose, isDarkMode, onConfigSave, sel
             {testStatus === 'error' && (
               <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
                 <AlertCircle size={14} className="text-red-500" />
-                <span className="text-sm font-medium text-red-600 dark:text-red-400 truncate max-w-[min(300px,50vw)]">{errorMessage || t('connection.connectFailed')}</span>
+                <EllipsisTooltip className="max-w-[min(300px,50vw)] text-sm font-medium text-red-600 dark:text-red-400">
+                  {errorMessage || t('connection.connectFailed')}
+                </EllipsisTooltip>
               </div>
             )}
           </div>

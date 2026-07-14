@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, GripVertical, Pencil, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 
 export type MessageQueuePanelProps<T> = {
@@ -111,9 +112,13 @@ export function MessageQueuePanel<T>({
                     <GripVertical size={14} />
                   </button>
                 )}
-                <p className="flex-1 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words line-clamp-3">
+                <EllipsisTooltip
+                  as="p"
+                  lines={3}
+                  className="flex-1 break-words whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-200"
+                >
                   {getLabel(item.payload)}
-                </p>
+                </EllipsisTooltip>
                 <div className="flex items-center gap-0.5 shrink-0 opacity-80 group-hover:opacity-100">
                   {onEdit && (
                     <button

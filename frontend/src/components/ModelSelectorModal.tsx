@@ -4,6 +4,7 @@ import { X, ExternalLink, Check, ChevronDown, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 
 interface ModelSelectorModalProps {
@@ -116,9 +117,9 @@ export function ModelSelectorModal({ isOpen, onClose, onSelect, isDarkMode }: Mo
                             <span className="font-semibold text-[var(--text-primary)]">Gemini 3 Pro Preview</span>
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">New</span>
                         </div>
-                        <p className="text-xs text-[var(--text-secondary)] truncate">
+                        <EllipsisTooltip as="p" className="text-xs text-[var(--text-secondary)]">
                             SOTA reasoning and multimodal understanding
-                        </p>
+                        </EllipsisTooltip>
                     </div>
 
                     {/* Checkmark */}
