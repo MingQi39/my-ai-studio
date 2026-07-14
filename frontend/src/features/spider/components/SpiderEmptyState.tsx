@@ -3,6 +3,7 @@ import { Bug, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/components/ui/utils';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { spiderBranding } from '@/features/spider/config/branding';
 
 export type SpiderQuickPrompt = {
@@ -66,9 +67,9 @@ export function SpiderEmptyState({ prompts, className }: SpiderEmptyStateProps) 
                   {prompt.title}
                 </span>
                 {prompt.urlHint ? (
-                  <span className="mt-0.5 block truncate font-mono text-[11px] text-[var(--text-secondary)]">
+                  <EllipsisTooltip className="mt-0.5 block font-mono text-[11px] text-[var(--text-secondary)]">
                     {prompt.urlHint}
-                  </span>
+                  </EllipsisTooltip>
                 ) : null}
               </span>
               <ChevronRight

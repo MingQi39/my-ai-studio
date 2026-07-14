@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
 import { ActiveModelBadge } from '@/components/ActiveModelBadge';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 import { SpiderChatView } from '@/features/spider/components/SpiderChatView';
 import { spiderBranding } from '@/features/spider/config/branding';
@@ -56,10 +57,15 @@ export function SpiderWorkspace({
           </div>
 
           <div className="min-w-0">
-            <h1 className="text-sm font-semibold truncate">{t('spider.sidebar.agentTitle')}</h1>
-            <p className="text-xs text-[var(--text-secondary)] truncate hidden sm:block">
+            <EllipsisTooltip as="h1" className="text-sm font-semibold">
+              {t('spider.sidebar.agentTitle')}
+            </EllipsisTooltip>
+            <EllipsisTooltip
+              as="p"
+              className="hidden text-xs text-[var(--text-secondary)] sm:block"
+            >
               {t('spider.sidebar.subtitle')}
-            </p>
+            </EllipsisTooltip>
           </div>
         </div>
 

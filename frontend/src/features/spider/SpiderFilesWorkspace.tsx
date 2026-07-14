@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { ActiveModelBadge } from '@/components/ActiveModelBadge';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 import { FilePreviewViewer } from '@/features/spider/components/file-preview/FilePreviewViewer';
 import { SpiderSessionScopeMeta } from '@/features/spider/components/SpiderSessionScopeMeta';
@@ -87,7 +88,9 @@ export function SpiderFilesWorkspace({
           </div>
 
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold">{t('spider.files.title')}</h1>
+            <EllipsisTooltip as="h1" className="text-sm font-semibold">
+              {t('spider.files.title')}
+            </EllipsisTooltip>
             {currentSessionId ? (
               <SpiderSessionScopeMeta
                 sessionId={currentSessionId}
@@ -96,7 +99,9 @@ export function SpiderFilesWorkspace({
                 className="mt-0.5"
               />
             ) : (
-              <p className="truncate text-xs text-[var(--text-secondary)]">{t('spider.files.subtitle')}</p>
+              <EllipsisTooltip as="p" className="text-xs text-[var(--text-secondary)]">
+                {t('spider.files.subtitle')}
+              </EllipsisTooltip>
             )}
           </div>
         </div>
@@ -116,7 +121,9 @@ export function SpiderFilesWorkspace({
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-1.5">
                 <FolderOpen size={14} className="shrink-0 text-[var(--text-secondary)]" />
-                <h2 className="truncate text-sm font-semibold">{t('spider.panel.workspace')}</h2>
+                <EllipsisTooltip as="h2" className="text-sm font-semibold">
+                  {t('spider.panel.workspace')}
+                </EllipsisTooltip>
               </div>
               <SpiderSessionScopeMeta
                 sessionId={currentSessionId}
@@ -158,7 +165,9 @@ export function SpiderFilesWorkspace({
                     >
                       <FileCode2 size={14} className="shrink-0 text-indigo-500" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{file.name}</p>
+                        <EllipsisTooltip as="p" className="text-sm font-medium">
+                          {file.name}
+                        </EllipsisTooltip>
                         <p className="text-[10px] text-[var(--text-secondary)]">
                           {formatFileSize(file.size)}
                           {file.modified_at ? ` · ${file.modified_at}` : ''}

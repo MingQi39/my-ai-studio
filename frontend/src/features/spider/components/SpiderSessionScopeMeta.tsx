@@ -1,5 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
+import { cn } from '@/components/ui/utils';
 
 interface SpiderSessionScopeMetaProps {
   sessionId: string | null;
@@ -27,16 +29,19 @@ export function SpiderSessionScopeMeta({
 
   return (
     <div className={className}>
-      <p className={`truncate text-[11px] text-[var(--text-secondary)] ${indentClassName}`} title={sessionLabel}>
+      <EllipsisTooltip
+        as="p"
+        className={cn('text-[11px] text-[var(--text-secondary)]', indentClassName)}
+      >
         {sessionLabel}
-      </p>
+      </EllipsisTooltip>
       {targetUrl ? (
-        <p
-          className={`truncate text-[11px] text-[var(--text-secondary)]/80 ${indentClassName}`}
-          title={targetUrl}
+        <EllipsisTooltip
+          as="p"
+          className={cn('text-[11px] text-[var(--text-secondary)]/80', indentClassName)}
         >
           {targetUrl}
-        </p>
+        </EllipsisTooltip>
       ) : null}
     </div>
   );

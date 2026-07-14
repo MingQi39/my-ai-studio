@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 import type { KnowledgeFilePreviewKind } from '@/features/spider/components/file-preview/knowledge-preview';
 import { FilePreviewMonaco } from '@/features/spider/components/file-preview/file-preview-monaco';
@@ -51,7 +52,9 @@ export function FilePreviewViewer({
 
       <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border-color)] px-3 py-2 sm:px-4">
         <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--text-secondary)]" aria-hidden />
-        <div className="min-w-0 flex-[1_1_12rem] truncate text-left text-sm font-semibold leading-none">{title}</div>
+        <EllipsisTooltip className="min-w-0 flex-[1_1_12rem] text-left text-sm font-semibold leading-none">
+          {title}
+        </EllipsisTooltip>
         {canDownload ? (
           <Button
             type="button"

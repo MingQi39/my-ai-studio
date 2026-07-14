@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 import { spiderBranding } from '@/features/spider/config/branding';
 import { SpiderSessionScopeMeta } from '@/features/spider/components/SpiderSessionScopeMeta';
@@ -66,7 +67,9 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
     >
       <div className="flex items-start justify-between gap-2 border-b border-[var(--border-color)] p-4">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold text-[var(--text-primary)]">{t('spider.panel.title')}</h2>
+          <EllipsisTooltip as="h2" className="text-sm font-semibold text-[var(--text-primary)]">
+            {t('spider.panel.title')}
+          </EllipsisTooltip>
           <p className="mt-1 text-xs text-[var(--text-secondary)] break-words">{t('spider.panel.subtitle')}</p>
         </div>
         {onClose ? (
@@ -80,7 +83,7 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
         <section className="min-w-0 space-y-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4">
           <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
             <Brain size={16} className="shrink-0 text-indigo-500" />
-            <span className="truncate">{t('spider.panel.model')}</span>
+            <EllipsisTooltip>{t('spider.panel.model')}</EllipsisTooltip>
           </div>
           <button
             type="button"
@@ -88,9 +91,9 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
             className="group w-full min-w-0 rounded-xl border border-[var(--border-color)] px-3 py-2.5 text-left transition-colors hover:border-indigo-500/30 hover:bg-[var(--bg-hover)]"
           >
             <div className="flex min-w-0 items-center justify-between gap-2">
-              <span className="truncate font-mono text-sm text-[var(--text-primary)]">
+              <EllipsisTooltip className="font-mono text-sm text-[var(--text-primary)]">
                 {selectedModel || t('spider.panel.modelUnset')}
-              </span>
+              </EllipsisTooltip>
               <ChevronRight
                 size={14}
                 className="shrink-0 text-[var(--text-secondary)] transition-colors group-hover:text-indigo-500"
@@ -104,7 +107,7 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
                 <FolderOpen size={16} className="shrink-0 text-indigo-500" />
-                <span className="truncate">{t('spider.panel.workspace')}</span>
+                <EllipsisTooltip>{t('spider.panel.workspace')}</EllipsisTooltip>
               </div>
               <SpiderSessionScopeMeta
                 sessionId={currentSessionId}
@@ -160,11 +163,12 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
                       <FileCode2 size={14} className="text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-[var(--text-primary)]">{file.name}</p>
-                      <p className="truncate text-[11px] text-[var(--text-secondary)]">
-                        {formatFileSize(file.size)}
-                        {file.modified_at ? ` · ${file.modified_at}` : ''}
-                      </p>
+                      <EllipsisTooltip as="p" className="text-sm font-medium text-[var(--text-primary)]">
+                        {file.name}
+                      </EllipsisTooltip>
+                      <EllipsisTooltip as="p" className="text-[11px] text-[var(--text-secondary)]">
+                        {`${formatFileSize(file.size)}${file.modified_at ? ` · ${file.modified_at}` : ''}`}
+                      </EllipsisTooltip>
                     </div>
                   </button>
                 </li>
@@ -176,7 +180,7 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
         <section className="min-w-0 space-y-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4">
           <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
             <GitBranch size={16} className="shrink-0 text-indigo-500" />
-            <span className="truncate">{t('spider.panel.flowTitle')}</span>
+            <EllipsisTooltip>{t('spider.panel.flowTitle')}</EllipsisTooltip>
           </div>
           <ol className="min-w-0 space-y-2">
             {FLOW_STEP_KEYS.map((key, index) => (
