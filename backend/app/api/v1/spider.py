@@ -20,15 +20,24 @@ from app.spider.schemas import SpiderAgentRequest, SpiderWorkspaceFile, SpiderWo
 from app.spider.services.chat_persistence import (
     messages_to_history,
     resolve_spider_session,
-    save_spider_assistant_message,
     save_spider_user_message,
+    upsert_spider_assistant_message,
 )
 from app.spider.services.sandbox import initialize_session_sandbox, list_workspace_files
 from app.spider.services.spider_agent_service import spider_agent_stream
-from app.spider.services.todo_events import normalize_todos
+from app.spider.services.stream_checkpoint import (
+    SpiderCheckpointState,
+    apply_persist_event,
+    has_persistable_snapshot,
+    ordered_tool_trace,
+    resolve_persist_content,
+)
 from app.travel.llm_context import resolve_travel_llm
 
 router = APIRouter(prefix="/spider", tags=["spider"])
+
+CHUNK_CHECKPOINT_INTERVAL_S = 2.0
+CHUNK_CHECKPOINT_MIN_CHARS = 200
 
 
 class _SSESessionEvent(BaseModel):
@@ -52,80 +61,63 @@ async def _persist_spider_stream(
     session_service,
     session_id: UUID,
 ) -> AsyncIterator[dict[str, Any]]:
-    content_buffer = ""
-    tool_trace: list[dict[str, Any]] = []
-    pending: dict[str, dict[str, Any]] = {}
-    has_error = False
-    failure: dict[str, Any] | None = None
-    latest_todos: list[dict[str, Any]] | None = None
+    state = SpiderCheckpointState()
+    assistant_message_id: UUID | None = None
+    last_flush_at = 0.0
+    chars_since_flush = 0
+    finalized = False
 
-    async for event in stream:
-        yield event
+    async def flush(*, is_complete: bool) -> None:
+        nonlocal assistant_message_id, last_flush_at, chars_since_flush, finalized
+        if not has_persistable_snapshot(state):
+            return
+        if is_complete:
+            finalized = True
+        content = resolve_persist_content(state, complete=is_complete)
+        trace = ordered_tool_trace(state)
+        try:
+            assistant_message_id = await upsert_spider_assistant_message(
+                session_service=session_service,
+                session_id=session_id,
+                message_id=assistant_message_id,
+                content=content,
+                tool_trace=trace if trace else None,
+                failure=state.failure,
+                todos=state.latest_todos,
+                is_complete=is_complete,
+            )
+        except Exception:
+            # checkpoint failure must not kill SSE
+            pass
+        last_flush_at = asyncio.get_running_loop().time()
+        chars_since_flush = 0
 
-        etype = event.get("type")
-        if etype == "chunk" and event.get("content"):
-            content_buffer += event["content"]
-        if etype == "final_response" and event.get("content"):
-            content_buffer = event["content"]
+    try:
+        async for event in stream:
+            yield event
+            action = apply_persist_event(state, event)
 
-        if etype == "tool_call_start":
-            call_id = str(event.get("call_id") or "")
-            if not call_id:
-                continue
-            pending[call_id] = {
-                "id": call_id,
-                "tool_name": event.get("tool_name") or event.get("raw_tool_name") or "unknown",
-                "tool_args": event.get("tool_args") or {},
-                "status": "pending",
-            }
-            if event.get("raw_tool_name"):
-                pending[call_id]["raw_tool_name"] = event.get("raw_tool_name")
+            if action == "immediate":
+                await flush(is_complete=False)
+            elif action == "debounced":
+                chars_since_flush += len(str(event.get("content") or ""))
+                now = asyncio.get_running_loop().time()
+                if (
+                    chars_since_flush >= CHUNK_CHECKPOINT_MIN_CHARS
+                    or (now - last_flush_at) >= CHUNK_CHECKPOINT_INTERVAL_S
+                ):
+                    await flush(is_complete=False)
 
-        if etype == "tool_call_result":
-            call_id = str(event.get("call_id") or "")
-            if not call_id:
-                continue
-            entry = pending.get(call_id)
-            if entry is None:
-                continue
-            entry["result"] = event.get("result")
-            entry["status"] = event.get("status") or ("error" if event.get("error") else "success")
-            tool_trace.append(entry)
-
-        if etype == "todos_updated":
-            normalized = normalize_todos(event.get("todos"))
-            if normalized:
-                latest_todos = normalized
-
-        if etype == "error":
-            has_error = True
-            if event.get("message"):
-                content_buffer = str(event["message"])
-            failure = {
-                "code": event.get("code"),
-                "title": event.get("title") or "任务执行失败",
-                "detail": event.get("detail") or event.get("message") or "",
-                "hints": event.get("hints") or [],
-                "stage": event.get("stage"),
-                "recoverable": bool(event.get("recoverable")),
-            }
-
-    if not content_buffer and not tool_trace and not failure and not latest_todos:
-        return
-
-    if has_error and not content_buffer:
-        content_buffer = "任务执行失败"
-    elif not content_buffer:
-        content_buffer = "（无回复内容）"
-
-    await save_spider_assistant_message(
-        session_service=session_service,
-        session_id=session_id,
-        content=content_buffer,
-        tool_trace=tool_trace if tool_trace else None,
-        failure=failure,
-        todos=latest_todos,
-    )
+        if has_persistable_snapshot(state):
+            await flush(is_complete=True)
+    except asyncio.CancelledError:
+        if not finalized and has_persistable_snapshot(state):
+            await flush(is_complete=False)
+            finalized = True
+        raise
+    finally:
+        if not finalized and has_persistable_snapshot(state):
+            await flush(is_complete=False)
 
 
 @router.post("/agent/run")
