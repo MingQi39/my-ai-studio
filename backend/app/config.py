@@ -71,8 +71,11 @@ class Settings(BaseSettings):
     FITNESS_DEFAULT_CALORIE_GOAL: int = 1800
 
     # Spider Agent (DeepAgents) — session artifacts live in Docker named volumes
+    # Default slim is fine for static HTTP pages.
+    # For JS-render escalation use e.g. mcr.microsoft.com/playwright/python:v1.61.0-jammy
     SPIDER_CONTAINER_MOUNT_PATH: str = "/workspace"
     SPIDER_DOCKER_IMAGE: str = "python:3.11-slim"
+    # Playwright path works more reliably at >=2g
     SPIDER_DOCKER_MEMORY_LIMIT: str = "1g"
     SPIDER_DOCKER_CPU_QUOTA: int = 100000
 
