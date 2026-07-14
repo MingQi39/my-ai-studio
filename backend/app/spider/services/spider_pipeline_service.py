@@ -24,6 +24,7 @@ from app.spider.services.sandbox_workspace import SandboxWorkspace
 from app.spider.services.target_url import try_resolve_spider_target_url
 from app.spider.services.todo_events import build_todos_updated_event, pipeline_todo_snapshot
 from app.spider.services.anti_scrape import classify_fetch_result, hints_for_error_code
+from app.spider.services.code_guards import validate_spider_imports
 from app.spider.services.request_cookies import cookies_configured as request_cookies_configured
 from app.spider.services.browser_fetch import probe_playwright_available, run_playwright_fetch
 from app.spider.services.tools import (
@@ -582,8 +583,13 @@ def is_empty_scrape_result(exec_result: dict[str, Any], detail: str) -> bool:
     return False
 
 
-async def _validate_python_code(code: str) -> dict[str, Any]:
-    return await validate_code_syntax.ainvoke({"code": code})
+async def _validate_python_code(
+    code: str, *, scrape_engine: str = "requests"
+) -> dict[str, Any]:
+    syntax = await validate_code_syntax.ainvoke({"code": code})
+    if not syntax.get("valid"):
+        return syntax
+    return validate_spider_imports(code, scrape_engine=scrape_engine)
 
 
 def _codegen_system_prompt(*, scrape_engine: str, limit: int) -> str:
@@ -595,6 +601,10 @@ def _codegen_system_prompt(*, scrape_engine: str, limit: int) -> str:
             "- 代码中只能使用 ASCII 标点符号（冒号/逗号/括号必须用英文半角 : , ( )）\n"
             "- 中文内容只能出现在字符串字面量或注释中\n"
             "- 必须使用同步 Playwright（from playwright.sync_api import sync_playwright），禁止 asyncio / await\n"
+            "- 合法导入示例（照抄）：from playwright.sync_api import sync_playwright；"
+            "from bs4 import BeautifulSoup\n"
+            "- 禁止从 playwright / playwright.sync_api 导入 Soup、BeautifulSoup、Browser、Page；"
+            "禁止 import playwright\n"
             "- 可用 BeautifulSoup 解析 page.content() 返回的 HTML\n"
             "- 入口必须是同步 def main() -> int，并用 if __name__ == '__main__': raise SystemExit(main())\n"
             "- TARGET_URL 必须等于给定目标 URL，禁止改写\n"
@@ -612,6 +622,7 @@ def _codegen_system_prompt(*, scrape_engine: str, limit: int) -> str:
         "- 代码中只能使用 ASCII 标点符号（冒号/逗号/括号必须用英文半角 : , ( )）\n"
         "- 中文内容只能出现在字符串字面量或注释中\n"
         "- 必须使用同步代码：只用 requests + BeautifulSoup，禁止 asyncio / aiohttp / await / async def\n"
+        "- 禁止导入 playwright / selenium；解析只用 from bs4 import BeautifulSoup\n"
         "- 入口必须是同步 def main() -> int，并用 if __name__ == '__main__': raise SystemExit(main())\n"
         "- TARGET_URL 必须等于给定目标 URL，禁止改写、加空格或猜测路径\n"
         "- 使用 requests.Session、logging、random.uniform 延迟\n"
@@ -682,7 +693,7 @@ async def _generate_spider_code_with_retry(
         limit=limit,
         scrape_engine=scrape_engine,
     )
-    syntax = await _validate_python_code(code)
+    syntax = await _validate_python_code(code, scrape_engine=scrape_engine)
     if syntax.get("valid"):
         return code, "llm"
 
@@ -696,8 +707,11 @@ async def _generate_spider_code_with_retry(
         [
             SystemMessage(
                 content=(
-                    "修复以下 Python 爬虫代码的语法错误。"
-                    "只输出完整可运行代码，不要解释，不要使用全角标点。"
+                    "修复以下 Python 爬虫代码的语法或导入错误。"
+                    "只输出完整可运行代码，不要解释，不要使用全角标点。\n"
+                    f"校验失败原因: {syntax.get('message', '')}\n"
+                    "Playwright 路径仅允许: from playwright.sync_api import sync_playwright；"
+                    "解析用 from bs4 import BeautifulSoup。禁止从 playwright 导入 Soup/Browser/Page。"
                 )
             ),
             HumanMessage(content=code),
@@ -706,7 +720,7 @@ async def _generate_spider_code_with_retry(
     fixed = _sanitize_python_code(
         _strip_code_fences(fix.content if isinstance(fix.content, str) else str(fix.content))
     )
-    syntax = await _validate_python_code(fixed)
+    syntax = await _validate_python_code(fixed, scrape_engine=scrape_engine)
     if syntax.get("valid"):
         return fixed, "llm_fixed"
 
@@ -734,6 +748,8 @@ async def _fix_runtime_spider_code(
         constraints = (
             "硬性约束：\n"
             "- 同步 Playwright（sync_playwright），可用 BeautifulSoup 解析 page.content()\n"
+            "- 合法导入: from playwright.sync_api import sync_playwright 与 "
+            "from bs4 import BeautifulSoup；禁止 Soup/Browser/Page 从 playwright 导入\n"
             "- 禁止 asyncio/await/async def\n"
             "- 入口必须同步 main()，用 raise SystemExit(main())\n"
             "- 无论条数多少都写入 scraped_data.json；有数据退出 0，无数据退出 1\n"
@@ -807,7 +823,7 @@ async def _execute_spider_with_retry(
                 error_message=error_msg,
                 scrape_engine=scrape_engine,
             )
-            syntax = await _validate_python_code(spider_code)
+            syntax = await _validate_python_code(spider_code, scrape_engine=scrape_engine)
             if syntax.get("valid"):
                 await save_spider_code.ainvoke({"code": spider_code, "filename": "spider.py"})
                 source = "llm_runtime_fixed"
@@ -1041,7 +1057,7 @@ async def spider_pipeline_stream(
         anti_scraping=anti if isinstance(anti, dict) else {},
         scrape_engine=scrape_engine,
     )
-    syntax = await _validate_python_code(code)
+    syntax = await _validate_python_code(code, scrape_engine=scrape_engine)
     if not syntax.get("valid"):
         yield _workspace_updated_event(workspace)
         yield _todos_event(completed_through=0, failed_index=1)
