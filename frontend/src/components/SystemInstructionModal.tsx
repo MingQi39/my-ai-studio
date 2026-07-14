@@ -370,9 +370,9 @@ function InstructionItem({
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+              <EllipsisTooltip as="h3" className="text-sm font-semibold text-[var(--text-primary)]">
                 {instruction.title}
-              </h3>
+              </EllipsisTooltip>
               <p
                 className={cn(
                   'text-xs text-[var(--text-secondary)] mt-1 transition-all',
