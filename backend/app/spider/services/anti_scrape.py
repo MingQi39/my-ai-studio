@@ -25,7 +25,7 @@ _ERROR_HINTS: dict[str, list[str]] = {
         "若需 JS 渲染，将 SPIDER_DOCKER_IMAGE 换为 Playwright 镜像后重试",
     ],
     "anti_scrape_hard": [
-        "目标页需要人工验证或登录态，当前不支持自动绕过 / Cookie 注入",
+        "目标页需要人工验证或登录态：可在目标网址下方粘贴登录 Cookie（不做自动绕过）",
         "请换更开放的公开列表页，或稍后再试",
     ],
     "browser_image_unavailable": [
@@ -36,6 +36,7 @@ _ERROR_HINTS: dict[str, list[str]] = {
     "browser_fetch_failed": [
         "浏览器沙箱抓取失败，检查目标站是否可访问",
         "适当增大超时后重试，或换静态列表页",
+        "若 Chromium 在 page.content 崩溃：确认 SPIDER_DOCKER_SHM_SIZE≥1g、MEMORY≥2g，并新开会话重建容器",
     ],
     "empty_scrape": [
         "把目标网址换成明确的列表页",
@@ -47,6 +48,11 @@ _ERROR_HINTS: dict[str, list[str]] = {
         "小模型生成不稳时可换官方 API 模型",
     ],
 }
+
+_ANTI_SCRAPE_HARD_WITH_COOKIES = [
+    "已注入 Cookie 仍被拦截：Cookie 可能过期或无效，请更新后重试",
+    "请换更开放的公开列表页；当前不支持自动绕过人机验证",
+]
 
 
 def classify_fetch_result(
@@ -75,7 +81,11 @@ def classify_fetch_result(
             "status_code": status_code,
         }
 
-    has_captcha = any(t in lowered for t in _CAPTCHA_TOKENS)
+    soup = BeautifulSoup(content, "lxml") if content else None
+    visible = (soup.get_text(" ", strip=True) if soup else content).lower()
+
+    # CAPTCHA tokens frequently appear in bundled JS; only visible text counts as hard.
+    has_captcha = any(t in visible for t in _CAPTCHA_TOKENS)
     if has_captcha:
         mechanisms.append("CAPTCHA")
         recommendations.append("需要人工验证；当前不自动绕过")
@@ -96,9 +106,8 @@ def classify_fetch_result(
     if cf:
         mechanisms.append("Cloudflare")
 
-    soup = BeautifulSoup(content, "lxml") if content else None
-    visible = soup.get_text().strip() if soup else ""
-    script_heavy = bool(soup and soup.find_all("script") and len(visible) < _TEXT_THRESHOLD)
+    visible_len = len(visible.strip()) if visible else 0
+    script_heavy = bool(soup and soup.find_all("script") and visible_len < _TEXT_THRESHOLD)
     if script_heavy:
         mechanisms.append("JavaScript Rendering")
         recommendations.append("使用沙箱内 Playwright 渲染后再解析")
@@ -152,7 +161,9 @@ def classify_fetch_result(
     }
 
 
-def hints_for_error_code(code: str) -> list[str]:
+def hints_for_error_code(code: str, *, cookies_configured: bool = False) -> list[str]:
+    if code == "anti_scrape_hard" and cookies_configured:
+        return list(_ANTI_SCRAPE_HARD_WITH_COOKIES)
     return list(
         _ERROR_HINTS.get(code)
         or [

@@ -24,6 +24,7 @@ from app.spider.services.sandbox_workspace import SandboxWorkspace
 from app.spider.services.target_url import try_resolve_spider_target_url
 from app.spider.services.todo_events import build_todos_updated_event, pipeline_todo_snapshot
 from app.spider.services.anti_scrape import classify_fetch_result, hints_for_error_code
+from app.spider.services.request_cookies import cookies_configured as request_cookies_configured
 from app.spider.services.browser_fetch import probe_playwright_available, run_playwright_fetch
 from app.spider.services.tools import (
     analyze_html_structure,
@@ -233,6 +234,8 @@ def _fallback_spider_code(target_url: str, *, limit: int = 10) -> str:
                 candidates.extend(
                     el.get_text(" ", strip=True) for el in node.select(title_sel)
                 )
+            if getattr(node, "name", None) == "a":
+                candidates.append(node.get_text(" ", strip=True))
             for sel in ("span.title", ".title", "h2", "h3", "a[href]"):
                 candidates.extend(
                     el.get_text(" ", strip=True) for el in node.select(sel)
@@ -247,6 +250,10 @@ def _fallback_spider_code(target_url: str, *, limit: int = 10) -> str:
 
 
         def _pick_href(node: Any) -> str:
+            if getattr(node, "name", None) == "a":
+                href = (node.get("href") or "").strip()
+                if href and not href.startswith(("javascript:", "#")):
+                    return href
             for link in node.select("a[href]"):
                 href = (link.get("href") or "").strip()
                 if href and not href.startswith(("javascript:", "#")):
@@ -263,13 +270,14 @@ def _fallback_spider_code(target_url: str, *, limit: int = 10) -> str:
                 ("article", "h2", None, None),
                 ("div.item", None, None, None),
                 ("li", "a", None, None),
+                ("a[href]", None, None, None),
             ]
             for container_sel, title_sel, author_sel, tag_sel in selectors:
                 containers = soup.select(container_sel)
                 if not containers:
                     continue
                 batch: list[dict[str, Any]] = []
-                for node in containers[:LIMIT]:
+                for node in containers[: max(LIMIT * 3, LIMIT)]:
                     try:
                         title = _pick_title(node, title_sel)
                         href = _pick_href(node)
@@ -287,6 +295,8 @@ def _fallback_spider_code(target_url: str, *, limit: int = 10) -> str:
                                 "author": author,
                                 "tags": tags,
                             }})
+                            if len(batch) >= LIMIT:
+                                break
                     except Exception:
                         continue
                 if batch and all(item["title"] for item in batch):
@@ -296,6 +306,8 @@ def _fallback_spider_code(target_url: str, *, limit: int = 10) -> str:
 
 
         def main() -> int:
+            import os
+
             session = requests.Session()
             session.headers.update({{
                 "User-Agent": (
@@ -304,7 +316,20 @@ def _fallback_spider_code(target_url: str, *, limit: int = 10) -> str:
                 ),
                 "Accept-Encoding": "gzip, deflate",
             }})
-            html = fetch_page(session, TARGET_URL)
+            cookie = os.environ.get("SPIDER_COOKIE") or ""
+            if cookie:
+                session.headers["Cookie"] = cookie
+            html = None
+            try:
+                with open("source_page.html", encoding="utf-8") as f:
+                    existing = f.read()
+                if existing.strip():
+                    logger.info("using existing source_page.html (%s bytes)", len(existing))
+                    html = existing
+            except OSError:
+                pass
+            if not html:
+                html = fetch_page(session, TARGET_URL)
             if not html:
                 return 1
             soup = BeautifulSoup(html, "lxml")
@@ -349,19 +374,44 @@ def _fallback_playwright_spider_code(target_url: str, *, limit: int = 10) -> str
 
         def fetch_html(url: str) -> str | None:
             try:
+                import os
+
                 random_delay()
+                cookie = os.environ.get("SPIDER_COOKIE") or ""
                 with sync_playwright() as p:
-                    browser = p.chromium.launch(headless=True)
+                    browser = p.chromium.launch(
+                        headless=True,
+                        args=[
+                            "--disable-dev-shm-usage",
+                            "--no-sandbox",
+                            "--disable-gpu",
+                        ],
+                    )
                     try:
-                        page = browser.new_page(
+                        context = browser.new_context(
                             user_agent=(
                                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                                 "Chrome/122.0.0.0 Safari/537.36"
-                            )
+                            ),
+                            viewport={{"width": 1280, "height": 720}},
+                            ignore_https_errors=True,
                         )
-                        page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                        return page.content()
+                        if cookie:
+                            context.set_extra_http_headers({{"Cookie": cookie}})
+                        page = context.new_page()
+                        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=8000)
+                        except Exception:
+                            pass
+                        time.sleep(0.8)
+                        try:
+                            html = page.content()
+                        except Exception:
+                            html = page.evaluate("() => document.documentElement.outerHTML")
+                        context.close()
+                        return html
                     finally:
                         browser.close()
             except Exception as exc:
@@ -369,26 +419,59 @@ def _fallback_playwright_spider_code(target_url: str, *, limit: int = 10) -> str
                 return None
 
 
+        def _pick_title(node: Any, title_sel: str | None) -> str:
+            candidates: list[str] = []
+            if title_sel:
+                candidates.extend(
+                    el.get_text(" ", strip=True) for el in node.select(title_sel)
+                )
+            if getattr(node, "name", None) == "a":
+                candidates.append(node.get_text(" ", strip=True))
+            for sel in ("span.title", ".title", "h2", "h3", "a[href]"):
+                candidates.extend(
+                    el.get_text(" ", strip=True) for el in node.select(sel)
+                )
+            for text in candidates:
+                cleaned = text.replace("\\xa0", " ").strip()
+                if cleaned.startswith("/"):
+                    cleaned = cleaned.lstrip("/").strip()
+                if cleaned:
+                    return cleaned.split("/")[0].strip() or cleaned
+            return ""
+
+
+        def _pick_href(node: Any) -> str:
+            if getattr(node, "name", None) == "a":
+                href = (node.get("href") or "").strip()
+                if href and not href.startswith(("javascript:", "#")):
+                    return href
+            for link in node.select("a[href]"):
+                href = (link.get("href") or "").strip()
+                if href and not href.startswith(("javascript:", "#")):
+                    return href
+            return ""
+
+
         def parse_items(soup: BeautifulSoup) -> list[dict[str, Any]]:
             items: list[dict[str, Any]] = []
             selectors = [
+                ("div.item", "span.title", "small.author", "a.tag"),
                 ("div.quote", "span.text", "small.author", "a.tag"),
-                ("div.item", "a", None, None),
-                ("li", "a", None, None),
+                ("li", "span.title", None, None),
                 ("article", "h2", None, None),
+                ("div.item", None, None, None),
+                ("li", "a", None, None),
+                ("a[href]", None, None, None),
             ]
             for container_sel, title_sel, author_sel, tag_sel in selectors:
                 containers = soup.select(container_sel)
                 if not containers:
                     continue
-                for node in containers[:LIMIT]:
+                batch: list[dict[str, Any]] = []
+                for node in containers[: max(LIMIT * 3, LIMIT)]:
                     try:
-                        title_el = node.select_one(title_sel) if title_sel else node
-                        title = title_el.get_text(strip=True) if title_el else ""
-                        href = title_el.get("href", "") if title_el and title_el.name == "a" else ""
-                        if not href:
-                            link = node.select_one("a[href]")
-                            href = link.get("href", "") if link else ""
+                        title = _pick_title(node, title_sel)
+                        href = _pick_href(node)
                         author = ""
                         if author_sel:
                             author_el = node.select_one(author_sel)
@@ -396,22 +479,37 @@ def _fallback_playwright_spider_code(target_url: str, *, limit: int = 10) -> str
                         tags: list[str] = []
                         if tag_sel:
                             tags = [t.get_text(strip=True) for t in node.select(tag_sel)]
-                        if title or href:
-                            items.append({{
+                        if title and href:
+                            batch.append({{
                                 "title": title,
                                 "url": href,
                                 "author": author,
                                 "tags": tags,
                             }})
+                            if len(batch) >= LIMIT:
+                                break
                     except Exception:
                         continue
-                if items:
+                if batch and all(item["title"] for item in batch):
+                    items = batch
                     break
             return items[:LIMIT]
 
 
+        def load_html(url: str) -> str | None:
+            try:
+                with open("source_page.html", encoding="utf-8") as f:
+                    existing = f.read()
+                if existing.strip():
+                    logger.info("using existing source_page.html (%s bytes)", len(existing))
+                    return existing
+            except OSError:
+                pass
+            return fetch_html(url)
+
+
         def main() -> int:
-            html = fetch_html(TARGET_URL)
+            html = load_html(TARGET_URL)
             if not html:
                 with open("scraped_data.json", "w", encoding="utf-8") as f:
                     json.dump([], f, ensure_ascii=False, indent=2)
@@ -430,9 +528,18 @@ def _fallback_playwright_spider_code(target_url: str, *, limit: int = 10) -> str
     ).strip()
 
 
-def decide_initial_fetch_mode(anti: dict[str, Any], *, http_success: bool) -> str:
+def decide_initial_fetch_mode(
+    anti: dict[str, Any],
+    *,
+    http_success: bool,
+    cookies_configured: bool = False,
+) -> str:
     """Return 'playwright' | 'http' | 'block_hard'."""
     if anti.get("block_hard"):
+        # Cookie injection deserves one browser attempt before hard-failing
+        # (HTTP responses often contain CAPTCHA tokens in JS shells).
+        if cookies_configured:
+            return "playwright"
         return "block_hard"
     if anti.get("escalate_to_browser"):
         return "playwright"
@@ -450,6 +557,15 @@ def should_escalate_after_empty_scrape(
     if already_escalated or scrape_engine != "requests":
         return False
     return anti_level in {"soft", "js_render"}
+
+
+def should_retry_parse_existing_html(
+    *,
+    has_source_page: bool,
+    already_retried: bool,
+) -> bool:
+    """One local re-parse when source_page.html already exists after empty scrape."""
+    return bool(has_source_page) and not already_retried
 
 
 def is_empty_scrape_result(exec_result: dict[str, Any], detail: str) -> bool:
@@ -485,6 +601,8 @@ def _codegen_system_prompt(*, scrape_engine: str, limit: int) -> str:
             "- chromium.launch(headless=True)，设置合理 timeout 与短暂延迟\n"
             "- 无论解析到多少条，都要把 list 写入 scraped_data.json；0 条也要写 []\n"
             "- 有有效记录返回 0，0 条记录返回 1\n"
+            "- 若环境变量 SPIDER_COOKIE 非空，必须用 page.set_extra_http_headers({'Cookie': ...}) 注入；"
+            "禁止把 Cookie 写进源码字面量\n"
             f"- 最多爬取 {limit} 条记录\n"
         )
     return (
@@ -506,6 +624,7 @@ def _codegen_system_prompt(*, scrape_engine: str, limit: int) -> str:
         "- 列表页优先用文本节点取标题（如 span.title / .title / h2），href 单独从 a[href] 取\n"
         "- 若某选择器抽出的 title 大量为空，必须换选择器，禁止写入空 title\n"
         "- 只爬取首页前几条数据即可\n"
+        "- 若环境变量 SPIDER_COOKIE 非空，必须 session.headers['Cookie']=该值；禁止把 Cookie 写进源码字面量\n"
         f"- 最多爬取 {limit} 条记录\n"
     )
 
@@ -781,7 +900,11 @@ async def spider_pipeline_stream(
             fetch_result.get("status_code") or 0
         ),
     )
-    mode = decide_initial_fetch_mode(anti, http_success=bool(fetch_result.get("success")))
+    mode = decide_initial_fetch_mode(
+        anti,
+        http_success=bool(fetch_result.get("success")),
+        cookies_configured=request_cookies_configured(),
+    )
     fetch_mode = "http"
     scrape_engine = "requests"
     escalation_reason: str | None = None
@@ -793,7 +916,7 @@ async def spider_pipeline_stream(
             code="anti_scrape_hard",
             title="目标站启用了验证码/人机校验",
             detail=str(anti.get("recommendations") or anti.get("detected_mechanisms") or "hard anti-scrape"),
-            hints=hints_for_error_code("anti_scrape_hard"),
+            hints=hints_for_error_code("anti_scrape_hard", cookies_configured=request_cookies_configured()),
             stage="web_analyzer",
             recoverable=False,
         )
@@ -801,11 +924,12 @@ async def spider_pipeline_stream(
         return
 
     if mode == "playwright":
-        escalation_reason = (
-            "classify_escalate"
-            if anti.get("escalate_to_browser")
-            else "http_fetch_failed"
-        )
+        if anti.get("escalate_to_browser"):
+            escalation_reason = "classify_escalate"
+        elif anti.get("block_hard") and request_cookies_configured():
+            escalation_reason = "cookie_hard_retry"
+        else:
+            escalation_reason = "http_fetch_failed"
         if not probe_playwright_available(workspace):
             yield _todos_event(completed_through=-1, failed_index=0)
             yield _error_event(
@@ -848,7 +972,7 @@ async def spider_pipeline_stream(
                 code="anti_scrape_hard",
                 title="浏览器渲染后仍是验证码/人机校验页",
                 detail=str(anti.get("detected_mechanisms") or "hard anti-scrape"),
-                hints=hints_for_error_code("anti_scrape_hard"),
+                hints=hints_for_error_code("anti_scrape_hard", cookies_configured=request_cookies_configured()),
                 stage="web_analyzer",
                 recoverable=False,
             )
@@ -961,6 +1085,7 @@ async def spider_pipeline_stream(
         code_source=code_source,
         scrape_engine=scrape_engine,
     )
+    local_html_retry_done = False
     if not exec_result.get("success"):
         detail = str(exec_result.get("error") or exec_result.get("output_preview") or "未知执行错误")
         no_data = is_empty_scrape_result(exec_result, detail)
@@ -1015,7 +1140,7 @@ async def spider_pipeline_stream(
                     code="anti_scrape_hard",
                     title="升级浏览器后仍是验证码页",
                     detail=str(anti.get("detected_mechanisms") or detail),
-                    hints=hints_for_error_code("anti_scrape_hard"),
+                    hints=hints_for_error_code("anti_scrape_hard", cookies_configured=request_cookies_configured()),
                     stage="debug_agent",
                     recoverable=False,
                 )
@@ -1046,17 +1171,60 @@ async def spider_pipeline_stream(
                 scrape_engine=scrape_engine,
             )
 
+        if (
+            not exec_result.get("success")
+            and is_empty_scrape_result(
+                exec_result,
+                str(exec_result.get("error") or exec_result.get("output_preview") or ""),
+            )
+            and should_retry_parse_existing_html(
+                has_source_page=workspace.exists("source_page.html"),
+                already_retried=local_html_retry_done,
+            )
+        ):
+            local_html_retry_done = True
+            escalation_reason = "empty_scrape_local_html"
+            analysis = await analyze_html_structure.ainvoke(
+                {"html_file": "source_page.html", "url": resolved_url}
+            )
+            code, code_source = await _generate_spider_code_with_retry(
+                llm_api_key=llm_api_key,
+                llm_base_url=llm_base_url,
+                model_name=model_name,
+                target_url=resolved_url,
+                analysis=analysis if isinstance(analysis, str) else json.dumps(analysis, ensure_ascii=False),
+                anti_scraping=anti if isinstance(anti, dict) else {},
+                scrape_engine=scrape_engine,
+            )
+            await save_spider_code.ainvoke({"code": code, "filename": "spider.py"})
+            exec_result, exec_source = await _execute_spider_with_retry(
+                execute_in_sandbox=execute_in_sandbox,
+                workspace=workspace,
+                llm_api_key=llm_api_key,
+                llm_base_url=llm_base_url,
+                model_name=model_name,
+                target_url=resolved_url,
+                code_source=code_source,
+                scrape_engine=scrape_engine,
+            )
+
         if not exec_result.get("success"):
             detail = str(exec_result.get("error") or exec_result.get("output_preview") or "未知执行错误")
             no_data = is_empty_scrape_result(exec_result, detail)
             err_code = "empty_scrape" if no_data else "execution_failed"
+            hints = hints_for_error_code(err_code)
+            if no_data and workspace.exists("source_page.html"):
+                hints = [
+                    "工作区已有 source_page.html：打开核对选择器是否匹配列表节点",
+                    *hints,
+                ]
             yield _workspace_updated_event(workspace)
             yield _todos_event(completed_through=1, failed_index=2)
             yield _error_event(
                 code=err_code,
                 title="未能爬取到有效数据" if no_data else "爬虫执行失败",
                 detail=detail,
-                hints=hints_for_error_code(err_code),
+                hints=hints,
                 stage="debug_agent",
                 recoverable=False,
             )

@@ -4,8 +4,10 @@ import type { StudioChatMessage } from '@/hooks/studioChat/types';
 import type { SpiderWorkspaceFile } from '@/features/spider/services/api/spider';
 import {
   SPIDER_ACTIVE_SESSION_KEY,
+  SPIDER_DRAFT_COOKIES_KEY,
   SPIDER_DRAFT_TARGET_URL_KEY,
   SPIDER_GENERATING_SESSION_KEY,
+  spiderCookiesStorageKey,
   spiderTargetUrlStorageKey,
 } from '@/features/spider/constants/session';
 import {
@@ -30,6 +32,39 @@ function syncGeneratingSessionId(sessionId: string | null) {
   }
 }
 
+function readStoredCookies(sessionId: string | null): { cookies: string; rememberCookies: boolean } {
+  if (sessionId) {
+    const stored = sessionStorage.getItem(spiderCookiesStorageKey(sessionId));
+    if (stored != null && stored !== '') {
+      return { cookies: stored, rememberCookies: true };
+    }
+    return { cookies: '', rememberCookies: false };
+  }
+  const draft = sessionStorage.getItem(SPIDER_DRAFT_COOKIES_KEY);
+  if (draft != null && draft !== '') {
+    return { cookies: draft, rememberCookies: true };
+  }
+  return { cookies: '', rememberCookies: false };
+}
+
+function persistCookies(sessionId: string | null, cookies: string, remember: boolean) {
+  const value = cookies.trim();
+  if (sessionId) {
+    sessionStorage.removeItem(SPIDER_DRAFT_COOKIES_KEY);
+    if (remember && value) {
+      sessionStorage.setItem(spiderCookiesStorageKey(sessionId), cookies);
+    } else {
+      sessionStorage.removeItem(spiderCookiesStorageKey(sessionId));
+    }
+    return;
+  }
+  if (remember && value) {
+    sessionStorage.setItem(SPIDER_DRAFT_COOKIES_KEY, cookies);
+  } else {
+    sessionStorage.removeItem(SPIDER_DRAFT_COOKIES_KEY);
+  }
+}
+
 interface SpiderChatStore {
   messages: StudioChatMessage[];
   messageCache: SpiderMessageCache<StudioChatMessage>;
@@ -40,6 +75,8 @@ interface SpiderChatStore {
   sessionListVersion: number;
   sessionEpoch: number;
   targetUrl: string;
+  cookies: string;
+  rememberCookies: boolean;
   workspaceFiles: SpiderWorkspaceFile[];
   restoreInterruptedHint: boolean;
 
@@ -54,6 +91,8 @@ interface SpiderChatStore {
   clearMessages: () => void;
   startNewSession: () => void;
   setTargetUrl: (url: string) => void;
+  setCookies: (cookies: string) => void;
+  setRememberCookies: (remember: boolean) => void;
   setWorkspaceFiles: (files: SpiderWorkspaceFile[]) => void;
   setRestoreInterruptedHint: (value: boolean) => void;
 }
@@ -68,6 +107,8 @@ export const useSpiderChatStore = create<SpiderChatStore>((set) => ({
   sessionListVersion: 0,
   sessionEpoch: 0,
   targetUrl: '',
+  cookies: '',
+  rememberCookies: false,
   workspaceFiles: [],
   restoreInterruptedHint: false,
 
@@ -116,6 +157,10 @@ export const useSpiderChatStore = create<SpiderChatStore>((set) => ({
         syncGeneratingSessionId(generatingSessionId);
       }
 
+      if (sessionId && state.rememberCookies && state.cookies.trim()) {
+        persistCookies(sessionId, state.cookies, true);
+      }
+
       return {
         currentSessionId: sessionId,
         generatingSessionId,
@@ -126,6 +171,7 @@ export const useSpiderChatStore = create<SpiderChatStore>((set) => ({
 
   switchToSession: (sessionId) => {
     syncActiveSessionId(sessionId);
+    const storedCookies = readStoredCookies(sessionId);
     set((state) => {
       const messageCache = stashSessionMessages(
         state.messageCache,
@@ -139,6 +185,8 @@ export const useSpiderChatStore = create<SpiderChatStore>((set) => ({
         restoreInterruptedHint: false,
         workspaceFiles: [],
         isLoadingHistory: false,
+        cookies: storedCookies.cookies,
+        rememberCookies: storedCookies.rememberCookies,
       };
     });
   },
@@ -165,6 +213,7 @@ export const useSpiderChatStore = create<SpiderChatStore>((set) => ({
   startNewSession: () => {
     syncActiveSessionId(null);
     sessionStorage.removeItem(SPIDER_DRAFT_TARGET_URL_KEY);
+    sessionStorage.removeItem(SPIDER_DRAFT_COOKIES_KEY);
     set((state) => {
       const messageCache = stashSessionMessages(
         state.messageCache,
@@ -181,6 +230,8 @@ export const useSpiderChatStore = create<SpiderChatStore>((set) => ({
         isLoadingHistory: false,
         workspaceFiles: [],
         targetUrl: '',
+        cookies: '',
+        rememberCookies: false,
         restoreInterruptedHint: false,
         sessionEpoch: state.sessionEpoch + 1,
       };
@@ -201,6 +252,16 @@ export const useSpiderChatStore = create<SpiderChatStore>((set) => ({
       sessionStorage.removeItem(SPIDER_DRAFT_TARGET_URL_KEY);
     }
     set({ targetUrl });
+  },
+  setCookies: (cookies) => {
+    const { currentSessionId, rememberCookies } = useSpiderChatStore.getState();
+    persistCookies(currentSessionId, cookies, rememberCookies);
+    set({ cookies });
+  },
+  setRememberCookies: (rememberCookies) => {
+    const { currentSessionId, cookies } = useSpiderChatStore.getState();
+    persistCookies(currentSessionId, cookies, rememberCookies);
+    set({ rememberCookies });
   },
   setWorkspaceFiles: (workspaceFiles) => set({ workspaceFiles }),
   setRestoreInterruptedHint: (restoreInterruptedHint) => set({ restoreInterruptedHint }),

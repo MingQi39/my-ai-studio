@@ -97,4 +97,13 @@ def test_classify_visitor_url_is_hard_even_with_scripts():
 def test_anti_scrape_hard_hints_mention_login_or_public_list():
     hints = hints_for_error_code("anti_scrape_hard")
     joined = " ".join(hints)
-    assert ("登录" in joined) or ("Cookie" in joined) or ("公开" in joined)
+    assert "Cookie" in joined
+    assert "公开" in joined
+    assert "不支持自动绕过 / Cookie 注入" not in joined
+
+
+def test_anti_scrape_hard_hints_when_cookies_configured():
+    hints = hints_for_error_code("anti_scrape_hard", cookies_configured=True)
+    joined = " ".join(hints)
+    assert "过期" in joined or "无效" in joined
+    assert "不支持自动绕过 / Cookie 注入" not in joined

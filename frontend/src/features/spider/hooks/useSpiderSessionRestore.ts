@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import {
   SPIDER_DRAFT_TARGET_URL_KEY,
   SPIDER_GENERATING_SESSION_KEY,
+  spiderCookiesStorageKey,
   spiderTargetUrlStorageKey,
 } from '@/features/spider/constants/session';
 import { loadSpiderSession } from '@/features/spider/services/api/sessions';
@@ -15,6 +16,14 @@ function readStoredTargetUrl(sessionId: string | null): string {
     return sessionStorage.getItem(spiderTargetUrlStorageKey(sessionId)) ?? '';
   }
   return sessionStorage.getItem(SPIDER_DRAFT_TARGET_URL_KEY) ?? '';
+}
+
+function readStoredCookies(sessionId: string): { cookies: string; rememberCookies: boolean } {
+  const stored = sessionStorage.getItem(spiderCookiesStorageKey(sessionId));
+  if (stored != null && stored !== '') {
+    return { cookies: stored, rememberCookies: true };
+  }
+  return { cookies: '', rememberCookies: false };
 }
 
 function markInterruptedToolRuns(messages: StudioChatMessage[]): StudioChatMessage[] {
@@ -45,6 +54,8 @@ export function useSpiderSessionRestore() {
   const setLoadingHistory = useSpiderChatStore((s) => s.setLoadingHistory);
   const setMessages = useSpiderChatStore((s) => s.setMessages);
   const setTargetUrl = useSpiderChatStore((s) => s.setTargetUrl);
+  const setCookies = useSpiderChatStore((s) => s.setCookies);
+  const setRememberCookies = useSpiderChatStore((s) => s.setRememberCookies);
   const setRestoreInterruptedHint = useSpiderChatStore((s) => s.setRestoreInterruptedHint);
   const { refreshWorkspace } = useSpiderWorkspace();
 
@@ -84,6 +95,9 @@ export function useSpiderSessionRestore() {
           setMessages(restored);
         }
         setTargetUrl(targetUrl ?? readStoredTargetUrl(currentSessionId));
+        const storedCookies = readStoredCookies(currentSessionId);
+        setRememberCookies(storedCookies.rememberCookies);
+        setCookies(storedCookies.cookies);
         void refreshWorkspace();
       })
       .catch((error) => console.error(error))
@@ -100,6 +114,8 @@ export function useSpiderSessionRestore() {
     setLoadingHistory,
     setMessages,
     setTargetUrl,
+    setCookies,
+    setRememberCookies,
     setRestoreInterruptedHint,
     refreshWorkspace,
   ]);

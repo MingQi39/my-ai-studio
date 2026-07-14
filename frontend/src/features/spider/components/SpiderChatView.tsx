@@ -33,7 +33,11 @@ export function SpiderChatView({
   const isLoadingHistory = useSpiderChatStore((s) => s.isLoadingHistory);
   const currentSessionId = useSpiderChatStore((s) => s.currentSessionId);
   const targetUrl = useSpiderChatStore((s) => s.targetUrl);
+  const cookies = useSpiderChatStore((s) => s.cookies);
+  const rememberCookies = useSpiderChatStore((s) => s.rememberCookies);
   const setTargetUrl = useSpiderChatStore((s) => s.setTargetUrl);
+  const setCookies = useSpiderChatStore((s) => s.setCookies);
+  const setRememberCookies = useSpiderChatStore((s) => s.setRememberCookies);
   const restoreInterruptedHint = useSpiderChatStore((s) => s.restoreInterruptedHint);
   const setRestoreInterruptedHint = useSpiderChatStore((s) => s.setRestoreInterruptedHint);
   const isViewingLiveRun =
@@ -100,17 +104,45 @@ export function SpiderChatView({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="px-3 sm:px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-subtle)]/60">
-        <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
-          {t('spider.chat.targetUrl')}
-        </label>
-        <input
-          type="url"
-          value={targetUrl}
-          onChange={(event) => setTargetUrl(event.target.value)}
-          placeholder={t('spider.chat.targetUrlPlaceholder')}
-          className="w-full h-9 rounded-lg border border-[var(--border-color)] bg-[var(--bg-main)] px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30"
-        />
+      <div className="px-3 sm:px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-subtle)]/60 space-y-2">
+        <div>
+          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">
+            {t('spider.chat.targetUrl')}
+          </label>
+          <input
+            type="url"
+            value={targetUrl}
+            onChange={(event) => setTargetUrl(event.target.value)}
+            placeholder={t('spider.chat.targetUrlPlaceholder')}
+            className="w-full h-9 rounded-lg border border-[var(--border-color)] bg-[var(--bg-main)] px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30"
+          />
+        </div>
+        <details className="group">
+          <summary className="cursor-pointer text-xs font-medium text-[var(--text-secondary)] select-none">
+            {t('spider.chat.cookiesLabel')}
+          </summary>
+          <div className="mt-2 space-y-2">
+            <textarea
+              value={cookies}
+              onChange={(event) => setCookies(event.target.value)}
+              placeholder={t('spider.chat.cookiesPlaceholder')}
+              rows={3}
+              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-main)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/30 font-mono"
+            />
+            <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                checked={rememberCookies}
+                onChange={(event) => setRememberCookies(event.target.checked)}
+                className="rounded border-[var(--border-color)]"
+              />
+              {t('spider.chat.rememberCookies')}
+            </label>
+            <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">
+              {t('spider.chat.cookiesHint')}
+            </p>
+          </div>
+        </details>
       </div>
 
       {restoreInterruptedHint ? (

@@ -12,6 +12,7 @@ class SpiderAgentRequest(BaseModel):
     session_id: UUID | None = None
     model_config_id: UUID
     target_url: str | None = None
+    cookies: str | None = Field(default=None, max_length=16384)
 
 
 class SpiderWorkspaceFile(BaseModel):

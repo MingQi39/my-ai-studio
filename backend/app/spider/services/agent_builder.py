@@ -97,6 +97,7 @@ def build_spider_agent(
 注意：
 - 使用 fetch_url 获取网页，它会保存到 Docker 沙箱并返回 html_file 文件名
 - 调用 analyze_html_structure 和 detect_anti_scraping 时，必须传入 fetch_url 返回的 html_file 参数
+- 若环境已配置登录 Cookie，fetch_url 会自动带上；不要要求用户把 Cookie 贴进对话
 - 严禁在工具输出中包含完整的 HTML 内容
 - 只返回关键信息（选择器、数据模式）""",
                 "tools": [fetch_url, analyze_html_structure, detect_anti_scraping],
@@ -112,6 +113,7 @@ def build_spider_agent(
 - 无论条数多少都写入 scraped_data.json；有数据 exit 0，无数据 exit 1
 - 每条记录必须含非空 title 与 url；禁止把海报链接（a>img、文本为空）当作 title
 - 列表页标题从文本节点取（如 span.title / .title / h2），href 单独从 a[href] 取
+- 若环境变量 SPIDER_COOKIE 非空，从 os.environ 读取并注入请求头；禁止把 Cookie 写进源码字面量
 必须使用 save_spider_code 工具将代码保存到 Docker 沙箱，不要只在对话中输出代码。""",
                 "tools": [save_spider_code, validate_code_syntax],
             },

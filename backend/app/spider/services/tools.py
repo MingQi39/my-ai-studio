@@ -42,7 +42,7 @@ def get_safe_headers(url: str) -> dict[str, str]:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
     ]
-    return {
+    headers = {
         "User-Agent": random.choice(pc_user_agents),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
@@ -51,6 +51,12 @@ def get_safe_headers(url: str) -> dict[str, str]:
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
     }
+    from app.spider.services.request_cookies import get_request_cookies
+
+    cookie = get_request_cookies()
+    if cookie:
+        headers["Cookie"] = cookie
+    return headers
 
 
 @tool

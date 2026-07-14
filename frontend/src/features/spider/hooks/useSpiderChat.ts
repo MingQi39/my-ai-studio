@@ -33,6 +33,7 @@ export function useSpiderChat() {
       setCurrentSessionId,
       bumpSessionList,
       targetUrl,
+      cookies,
     } = useSpiderChatStore.getState();
 
     addMessage({
@@ -114,6 +115,7 @@ export function useSpiderChat() {
         session_id: useSpiderChatStore.getState().currentSessionId,
         model_config_id: modelConfigId,
         target_url: targetUrl || null,
+        cookies: cookies.trim() || null,
       }),
       onEvent: (event) => {
         if (event.type === 'session' && 'session_id' in event) {

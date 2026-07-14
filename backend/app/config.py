@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     SPIDER_DOCKER_IMAGE: str = "python:3.11-slim"
     # Playwright path works more reliably at >=2g
     SPIDER_DOCKER_MEMORY_LIMIT: str = "1g"
+    # Chromium needs larger /dev/shm in Docker; default Docker shm is 64MB.
+    SPIDER_DOCKER_SHM_SIZE: str = "1gb"
     SPIDER_DOCKER_CPU_QUOTA: int = 100000
 
     @field_validator("CORS_ORIGINS", mode="before")

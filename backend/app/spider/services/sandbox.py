@@ -45,11 +45,28 @@ def volume_name_for_session(user_id: str, session_id: str) -> str:
     return f"spider-{_sanitize_volume_token(user_id)}-{_sanitize_volume_token(session_id)}"
 
 
+def container_name_for_session(session_id: str) -> str:
+    """Stable Desktop-friendly name grouped under the compose project prefix."""
+    return f"my-ai-studio-spider-{_sanitize_volume_token(session_id)}"
+
+
 def _ensure_volume(client: Any, volume_name: str) -> None:
     try:
         client.volumes.get(volume_name)
     except NotFound:
         client.volumes.create(name=volume_name)
+
+
+def _container_matches_configured_image(client: Any, container: Any, image: str) -> bool:
+    """True when the running container was created from settings.SPIDER_DOCKER_IMAGE."""
+    try:
+        expected = client.images.get(image)
+    except NotFound:
+        return False
+    try:
+        return container.image.id == expected.id
+    except Exception:
+        return False
 
 
 def _find_session_container(client: Any, session_id: str) -> str | None:
@@ -58,6 +75,12 @@ def _find_session_container(client: Any, session_id: str) -> str | None:
     if not containers:
         return None
     container = containers[0]
+    if not _container_matches_configured_image(client, container, settings.SPIDER_DOCKER_IMAGE):
+        try:
+            container.remove(force=True)
+        except Exception:
+            pass
+        return None
     if container.status != "running":
         container.start()
     return container.id
@@ -73,13 +96,20 @@ def _create_session_container(
 ) -> str:
     container = client.containers.run(
         settings.SPIDER_DOCKER_IMAGE,
+        name=container_name_for_session(session_id),
         command="tail -f /dev/null",
         detach=True,
         tty=True,
+        # Chromium in Docker needs larger /dev/shm or --disable-dev-shm-usage;
+        # bump shm so heavy pages (Weibo SPA) are less likely to crash mid-fetch.
+        shm_size=settings.SPIDER_DOCKER_SHM_SIZE,
         labels={
             "spider.session_id": session_id,
             "spider.user_id": user_id,
             "spider.app": "my-ai-studio",
+            # So Docker Desktop groups sandboxes under the my-ai-studio project.
+            "com.docker.compose.project": "my-ai-studio",
+            "com.docker.compose.service": "spider",
         },
         volumes={volume_name: {"bind": mount_path, "mode": "rw"}},
         working_dir=mount_path,
@@ -89,6 +119,26 @@ def _create_session_container(
         auto_remove=False,
     )
     return container.id
+
+
+def remove_session_sandbox(session_id: str) -> None:
+    """Best-effort remove of the per-session spider sandbox container."""
+    if docker is None:
+        return
+    try:
+        client = docker.from_env()
+    except Exception:
+        return
+    label = f"spider.session_id={session_id}"
+    try:
+        containers = client.containers.list(all=True, filters={"label": label})
+    except Exception:
+        return
+    for container in containers:
+        try:
+            container.remove(force=True)
+        except Exception:
+            pass
 
 
 def initialize_session_sandbox(user_id: str, session_id: str) -> SandboxWorkspace:
@@ -142,6 +192,11 @@ def create_execute_in_sandbox_tool(workspace: SandboxWorkspace):
         backend = workspace.backend
 
         try:
+            from app.spider.services.request_cookies import (
+                RUNTIME_COOKIE_FILENAME,
+                get_request_cookies,
+            )
+
             workspace.write_text("spider.py", code)
 
             check_result = backend.execute("pip show requests > /dev/null 2>&1")
@@ -150,9 +205,23 @@ def create_execute_in_sandbox_tool(workspace: SandboxWorkspace):
                     "pip install --no-cache-dir requests beautifulsoup4 lxml fake-useragent 2>&1"
                 )
 
-            exec_result = backend.execute(
-                f"cd {backend.working_dir} && python spider.py 2>&1"
-            )
+            cookie = get_request_cookies()
+            if cookie:
+                workspace.write_text(RUNTIME_COOKIE_FILENAME, cookie)
+                cookie_export = (
+                    f'export SPIDER_COOKIE="$(cat {RUNTIME_COOKIE_FILENAME} 2>/dev/null)"; '
+                )
+            else:
+                cookie_export = ""
+
+            try:
+                exec_result = backend.execute(
+                    f"cd {backend.working_dir} && {cookie_export}python spider.py 2>&1"
+                )
+            finally:
+                if cookie:
+                    backend.execute(f"rm -f {RUNTIME_COOKIE_FILENAME}")
+
             duration = time.time() - start_time
 
             scraped_data = None
@@ -212,8 +281,16 @@ def create_execute_in_sandbox_tool(workspace: SandboxWorkspace):
 
 
 def list_workspace_files(workspace: SandboxWorkspace) -> list[dict[str, Any]]:
+    from app.spider.services.request_cookies import RUNTIME_COOKIE_FILENAME
+
     try:
         files = workspace.list_files()
     except Exception:
         return []
-    return [item for item in files if not str(item.get("name", "")).endswith(".meta.json")]
+    hidden = {RUNTIME_COOKIE_FILENAME}
+    return [
+        item
+        for item in files
+        if not str(item.get("name", "")).endswith(".meta.json")
+        and str(item.get("name", "")) not in hidden
+    ]

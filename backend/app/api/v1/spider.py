@@ -34,6 +34,12 @@ from app.spider.services.sandbox import initialize_session_sandbox, list_workspa
 from app.spider.services.spider_agent_service import spider_agent_stream
 from app.spider.services.spider_pipeline_service import spider_pipeline_stream
 from app.spider.services.runtime_route import choose_spider_runtime
+from app.spider.services.request_cookies import (
+    CookieValidationError,
+    clear_request_cookies,
+    normalize_cookies,
+    set_request_cookies,
+)
 from app.spider.services.stream_checkpoint import (
     SpiderCheckpointState,
     apply_persist_event,
@@ -140,6 +146,11 @@ async def spider_agent_run(
     del db
 
     try:
+        normalized_cookies = normalize_cookies(request.cookies)
+    except CookieValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
         session_id, created = await resolve_spider_session(
             session_service=session_service,
             user_id=user_id,
@@ -162,21 +173,25 @@ async def spider_agent_run(
     ctx = await resolve_travel_llm(model_service, user_id, request.model_config_id)
 
     async def event_stream() -> AsyncIterator[dict[str, Any]]:
-        yield {"type": "session", "session_id": str(session_id), "created": created}
-        runtime = choose_spider_runtime(request.message, request.target_url)
-        stream_fn = spider_pipeline_stream if runtime == "pipeline" else spider_agent_stream
-        inner = stream_fn(
-            message=request.message,
-            conversation_history=conversation_history,
-            user_id=str(user_id),
-            session_id=str(session_id),
-            llm_api_key=ctx.api_key,
-            llm_base_url=ctx.base_url,
-            model_name=ctx.model_id,
-            target_url=request.target_url,
-        )
-        async for event in _persist_spider_stream(inner, session_service, session_id):
-            yield event
+        set_request_cookies(normalized_cookies)
+        try:
+            yield {"type": "session", "session_id": str(session_id), "created": created}
+            runtime = choose_spider_runtime(request.message, request.target_url)
+            stream_fn = spider_pipeline_stream if runtime == "pipeline" else spider_agent_stream
+            inner = stream_fn(
+                message=request.message,
+                conversation_history=conversation_history,
+                user_id=str(user_id),
+                session_id=str(session_id),
+                llm_api_key=ctx.api_key,
+                llm_base_url=ctx.base_url,
+                model_name=ctx.model_id,
+                target_url=request.target_url,
+            )
+            async for event in _persist_spider_stream(inner, session_service, session_id):
+                yield event
+        finally:
+            clear_request_cookies()
 
     return StreamingResponse(
         format_sse_stream(event_stream()),
@@ -216,11 +231,15 @@ async def spider_workspace(
 
 
 def _validate_workspace_filename(filename: str) -> str:
+    from app.spider.services.request_cookies import RUNTIME_COOKIE_FILENAME
+
     name = filename.strip()
     if not name or name in (".", ".."):
         raise HTTPException(status_code=400, detail="Invalid filename")
     if "/" in name or "\\" in name or ".." in name:
         raise HTTPException(status_code=400, detail="Invalid filename")
+    if name == RUNTIME_COOKIE_FILENAME:
+        raise HTTPException(status_code=404, detail="File not found")
     return name
 
 

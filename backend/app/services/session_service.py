@@ -236,6 +236,18 @@ class SessionService(BaseService):
         await self.db.delete(session)
         await self.db.commit()
 
+        # Spider sandboxes are created outside Compose; clean them up with the session.
+        try:
+            from app.spider.services.sandbox import remove_session_sandbox
+
+            remove_session_sandbox(str(session_id))
+        except Exception as exc:
+            self.logger.warning(
+                "Failed to remove spider sandbox for session %s: %s",
+                session_id,
+                exc,
+            )
+
         self.logger.info(f"Session deleted: {session_id}")
         return True
 
