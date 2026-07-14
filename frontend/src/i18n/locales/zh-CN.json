@@ -562,7 +562,7 @@
       "targetUrlPlaceholder": "https://movie.douban.com/top250",
       "urlHint": "建议填写列表页网址（不要只填站点首页）。Agent 会自动编排分析、生成、执行与清洗流程。",
       "emptyTitle": "DeepAgents 爬虫编排",
-      "emptyDescription": "输入目标网站和需求，Orchestrator 将自动调度子智能体完成全流程。",
+      "emptyDescription": "输入目标网站和需求，Agent 会自动完成分析、生成、执行与清洗。",
       "tryTasks": "试试这些任务",
       "suggestion1Title": "爬取电影标题和链接",
       "suggestion1Prompt": "分析目标网站首页结构，爬取电影标题和链接",
@@ -573,9 +573,9 @@
       "suggestion1": "分析 https://movie.douban.com/top250 并爬取电影标题和链接",
       "suggestion2": "爬取目标网站列表页标题、评分和详情链接",
       "suggestion3": "生成爬虫代码并在沙箱中执行，输出清洗后的 JSON",
-      "thinking": "Orchestrator 正在规划任务…",
+      "thinking": "正在规划爬取任务…",
       "runningTool": "正在执行：{{tool}}",
-      "subagentWorking": "子智能体 {{name}} 正在工作…",
+      "subagentWorking": "{{name}} 正在处理…",
       "done": "任务处理完成",
       "error": "爬虫任务执行失败",
       "streamError": "连接中断，请检查后端、Docker 与模型配置",
@@ -589,7 +589,8 @@
         "collapse": "折叠任务列表",
         "expand": "展开任务列表",
         "toolDetails": "工具详情",
-        "inProgress": "进行中"
+        "inProgress": "进行中",
+        "failed": "失败"
       }
     },
     "failure": {

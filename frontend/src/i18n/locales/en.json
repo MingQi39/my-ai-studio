@@ -560,9 +560,9 @@
       "placeholder": "Describe your crawler task, e.g. scrape movie titles and links from the homepage…",
       "targetUrl": "Target URL",
       "targetUrlPlaceholder": "https://movie.douban.com/top250",
-      "urlHint": "Fill in a list-page URL first (not just a site homepage). The orchestrator will run analysis, codegen, execution, and cleaning.",
+      "urlHint": "Fill in a list-page URL first (not just a site homepage). The agent will run analysis, codegen, execution, and cleaning.",
       "emptyTitle": "DeepAgents spider orchestration",
-      "emptyDescription": "Provide a target site and requirements. The orchestrator delegates to sub-agents automatically.",
+      "emptyDescription": "Provide a target site and requirements. The agent handles analysis, generation, execution, and cleaning.",
       "tryTasks": "Try these tasks",
       "suggestion1Title": "Scrape movie titles and links",
       "suggestion1Prompt": "Analyze the target site structure and scrape movie titles and links",
@@ -573,9 +573,9 @@
       "suggestion1": "Analyze https://movie.douban.com/top250 and scrape movie titles and links",
       "suggestion2": "Scrape list page titles, ratings, and detail links",
       "suggestion3": "Generate spider code, run in sandbox, and output cleaned JSON",
-      "thinking": "Orchestrator is planning the task…",
+      "thinking": "Planning the crawl…",
       "runningTool": "Running: {{tool}}",
-      "subagentWorking": "Sub-agent {{name}} is working…",
+      "subagentWorking": "{{name}} is working…",
       "done": "Task completed",
       "error": "Spider task failed",
       "streamError": "Stream interrupted. Check backend, Docker, and model config.",
@@ -589,7 +589,8 @@
         "collapse": "Collapse task list",
         "expand": "Expand task list",
         "toolDetails": "Tool details",
-        "inProgress": "In progress"
+        "inProgress": "In progress",
+        "failed": "Failed"
       }
     },
     "failure": {

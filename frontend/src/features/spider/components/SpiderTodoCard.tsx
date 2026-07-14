@@ -46,6 +46,7 @@ export function SpiderTodoCard({ todos, isDarkMode = false }: SpiderTodoCardProp
         <ul className="max-h-48 space-y-1.5 overflow-y-auto border-t border-[var(--border-color)] px-3 py-2">
           {todos.map((todo, index) => {
             const isDone = todo.status === 'completed';
+            const isFailed = todo.status === 'failed';
             const isRunning = todo.status === 'in_progress';
             return (
               <li key={`${index}-${todo.content}`} className="flex min-w-0 items-center gap-2">
@@ -53,6 +54,13 @@ export function SpiderTodoCard({ todos, isDarkMode = false }: SpiderTodoCardProp
                   {isDone ? (
                     <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white">
                       <Check size={10} strokeWidth={3} />
+                    </span>
+                  ) : isFailed ? (
+                    <span
+                      className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white"
+                      aria-label={t('spider.chat.todos.failed')}
+                    >
+                      <X size={10} strokeWidth={3} />
                     </span>
                   ) : isRunning ? (
                     <Loader2
@@ -69,7 +77,9 @@ export function SpiderTodoCard({ todos, isDarkMode = false }: SpiderTodoCardProp
                     'min-w-0 flex-1 truncate text-sm',
                     isDone
                       ? 'text-[var(--text-secondary)] line-through'
-                      : 'text-[var(--text-primary)]',
+                      : isFailed
+                        ? 'text-red-600'
+                        : 'text-[var(--text-primary)]',
                   )}
                   title={todo.content}
                 >

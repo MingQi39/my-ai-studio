@@ -32,6 +32,8 @@ from app.spider.services.html_preview import (
 )
 from app.spider.services.sandbox import initialize_session_sandbox, list_workspace_files
 from app.spider.services.spider_agent_service import spider_agent_stream
+from app.spider.services.spider_pipeline_service import spider_pipeline_stream
+from app.spider.services.runtime_route import choose_spider_runtime
 from app.spider.services.stream_checkpoint import (
     SpiderCheckpointState,
     apply_persist_event,
@@ -161,7 +163,9 @@ async def spider_agent_run(
 
     async def event_stream() -> AsyncIterator[dict[str, Any]]:
         yield {"type": "session", "session_id": str(session_id), "created": created}
-        inner = spider_agent_stream(
+        runtime = choose_spider_runtime(request.message, request.target_url)
+        stream_fn = spider_pipeline_stream if runtime == "pipeline" else spider_agent_stream
+        inner = stream_fn(
             message=request.message,
             conversation_history=conversation_history,
             user_id=str(user_id),

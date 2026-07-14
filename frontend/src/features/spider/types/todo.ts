@@ -1,4 +1,4 @@
-export type SpiderTodoStatus = 'pending' | 'in_progress' | 'completed';
+export type SpiderTodoStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 
 export type SpiderTodoItem = {
   content: string;
@@ -6,7 +6,12 @@ export type SpiderTodoItem = {
 };
 
 export function isSpiderTodoStatus(value: unknown): value is SpiderTodoStatus {
-  return value === 'pending' || value === 'in_progress' || value === 'completed';
+  return (
+    value === 'pending' ||
+    value === 'in_progress' ||
+    value === 'completed' ||
+    value === 'failed'
+  );
 }
 
 export function normalizeSpiderTodos(raw: unknown): SpiderTodoItem[] {

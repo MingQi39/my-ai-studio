@@ -21,6 +21,8 @@ from app.spider.services.sandbox import (
     list_workspace_files,
 )
 from app.spider.services.sandbox_workspace import SandboxWorkspace
+from app.spider.services.target_url import try_resolve_spider_target_url
+from app.spider.services.todo_events import build_todos_updated_event, pipeline_todo_snapshot
 from app.spider.services.tools import (
     analyze_html_structure,
     clean_data,
@@ -137,12 +139,16 @@ def _workspace_updated_event(workspace: SandboxWorkspace) -> dict[str, Any]:
 
 
 def _resolve_target_url(message: str, target_url: str | None) -> str:
-    if target_url and target_url.strip():
-        return target_url.strip()
-    for token in message.split():
-        if token.startswith("http://") or token.startswith("https://"):
-            return token.strip(".,;)")
-    raise ValueError("请填写目标网址，或在消息中包含 http(s):// 链接")
+    resolved = try_resolve_spider_target_url(message, target_url)
+    if not resolved:
+        raise ValueError("请填写目标网址，或在消息中包含 http(s):// 链接")
+    return resolved
+
+
+def _todos_event(**kwargs: Any) -> dict[str, Any]:
+    event = build_todos_updated_event(pipeline_todo_snapshot(**kwargs))
+    assert event is not None
+    return event
 
 
 def _strip_code_fences(code: str) -> str:
@@ -537,6 +543,7 @@ async def spider_pipeline_stream(
     execute_in_sandbox = create_execute_in_sandbox_tool(workspace)
 
     # Stage 1: web_analyzer
+    yield _todos_event(active_index=0)
     stage_events = await _emit_stage_start("web_analyzer", f"分析 {resolved_url}")
     call_id = stage_events[0]["call_id"]
     for event in stage_events:
@@ -544,6 +551,7 @@ async def spider_pipeline_stream(
 
     fetch_result = await fetch_url.ainvoke({"url": resolved_url})
     if not fetch_result.get("success"):
+        yield _todos_event(completed_through=-1, failed_index=0)
         yield _error_event(
             code="fetch_failed",
             title="网页抓取失败",
@@ -575,6 +583,7 @@ async def spider_pipeline_stream(
     )
     for event in await _emit_stage_complete(call_id, _preview(analysis)):
         yield event
+    yield _todos_event(completed_through=0, active_index=1)
     yield _workspace_updated_event(workspace)
 
     # Stage 2: code_generator
@@ -594,6 +603,7 @@ async def spider_pipeline_stream(
     syntax = await _validate_python_code(code)
     if not syntax.get("valid"):
         yield _workspace_updated_event(workspace)
+        yield _todos_event(completed_through=0, failed_index=1)
         yield _error_event(
             code="codegen_syntax_invalid",
             title="生成的爬虫代码语法无效",
@@ -614,6 +624,7 @@ async def spider_pipeline_stream(
         save_msg = f"{save_msg}\n（LLM 代码无效，已自动切换为内置通用爬虫模板）"
     for event in await _emit_stage_complete(call_id, save_msg):
         yield event
+    yield _todos_event(completed_through=1, active_index=2)
     yield _workspace_updated_event(workspace)
 
     # Stage 3: debug_agent
@@ -638,6 +649,7 @@ async def spider_pipeline_stream(
             and int(exec_result.get("exit_code") or 1) == 0
         ) or "scraped_data.json" in detail
         yield _workspace_updated_event(workspace)
+        yield _todos_event(completed_through=1, failed_index=2)
         yield _error_event(
             code="empty_scrape" if no_data or "0 条" in detail else "execution_failed",
             title="未能爬取到有效数据" if no_data or "0 条" in detail or "未生成 scraped_data" in detail else "爬虫执行失败",
@@ -661,6 +673,7 @@ async def spider_pipeline_stream(
         exec_preview = f"{exec_preview}\n（已根据运行错误自动修复代码）"
     for event in await _emit_stage_complete(call_id, exec_preview):
         yield event
+    yield _todos_event(completed_through=2, active_index=3)
     yield _workspace_updated_event(workspace)
 
     # Stage 4: data_processor
@@ -679,6 +692,7 @@ async def spider_pipeline_stream(
         scraped_bytes = workspace.read_bytes("scraped_data.json") if scraped_exists else None
         empty_scraped = scraped_bytes is not None and len(scraped_bytes.strip()) < 3
         yield _workspace_updated_event(workspace)
+        yield _todos_event(completed_through=2, failed_index=3)
         detail = (
             "工作区里已有 scraped_data.json，但内容为空或无效，无法进入清洗阶段。"
             if empty_scraped
@@ -711,6 +725,7 @@ async def spider_pipeline_stream(
     )
     for event in await _emit_stage_complete(call_id, _preview(validation)):
         yield event
+    yield _todos_event(completed_through=3)
     yield _workspace_updated_event(workspace)
 
     record_count = validation.get("total_records", 0)
