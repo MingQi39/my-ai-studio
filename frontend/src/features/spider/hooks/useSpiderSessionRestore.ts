@@ -39,7 +39,6 @@ function markInterruptedToolRuns(messages: StudioChatMessage[]): StudioChatMessa
 export function useSpiderSessionRestore() {
   const currentSessionId = useSpiderChatStore((s) => s.currentSessionId);
   const messages = useSpiderChatStore((s) => s.messages);
-  const isGenerating = useSpiderChatStore((s) => s.isGenerating);
   const isLoadingHistory = useSpiderChatStore((s) => s.isLoadingHistory);
   const sessionEpoch = useSpiderChatStore((s) => s.sessionEpoch);
   const restoreInterruptedHint = useSpiderChatStore((s) => s.restoreInterruptedHint);
@@ -52,12 +51,20 @@ export function useSpiderSessionRestore() {
   useEffect(() => {
     if (!currentSessionId) return;
     if (messages.length > 0) return;
-    if (isGenerating) return;
     if (isLoadingHistory) return;
 
     setLoadingHistory(true);
     void loadSpiderSession(currentSessionId)
       .then(({ messages: restored, targetUrl }) => {
+        // Another session switch may have completed while this request was in flight.
+        if (useSpiderChatStore.getState().currentSessionId !== currentSessionId) {
+          return;
+        }
+        // In-memory live stream may have hydrated this session while the request was pending.
+        if (useSpiderChatStore.getState().messages.length > 0) {
+          return;
+        }
+
         const wasGenerating =
           sessionStorage.getItem(SPIDER_GENERATING_SESSION_KEY) === currentSessionId;
         const hasIncomplete = restored.some(
@@ -80,11 +87,14 @@ export function useSpiderSessionRestore() {
         void refreshWorkspace();
       })
       .catch((error) => console.error(error))
-      .finally(() => setLoadingHistory(false));
+      .finally(() => {
+        if (useSpiderChatStore.getState().currentSessionId === currentSessionId) {
+          setLoadingHistory(false);
+        }
+      });
   }, [
     currentSessionId,
     sessionEpoch,
-    isGenerating,
     isLoadingHistory,
     messages.length,
     setLoadingHistory,

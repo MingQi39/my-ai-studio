@@ -86,3 +86,4 @@ htmlcov/
 # Cache
 .cache/
 .parcel-cache/
+.worktrees/

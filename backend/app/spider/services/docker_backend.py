@@ -14,6 +14,8 @@ from deepagents.backends.protocol import (
 )
 from deepagents.backends.sandbox import BaseSandbox
 
+from app.spider.services.file_mtime import parse_ls_line
+
 try:
     import docker
     from docker.errors import NotFound
@@ -175,27 +177,16 @@ class DockerBackend(BaseSandbox):
         if not self._container:
             return []
 
-        result = self.execute(f"ls -la {path}")
+        # Epoch mtime — container TZ is usually UTC; format in Asia/Shanghai later.
+        result = self.execute(f"ls -la --time-style=+%s {path}")
         if result.exit_code != 0:
             return []
 
         entries: list[dict] = []
-        lines = result.output.strip().split("\n")
-        for line in lines[1:]:
-            parts = line.split(maxsplit=8)
-            if len(parts) < 9:
-                continue
-            entries.append(
-                {
-                    "permissions": parts[0],
-                    "links": parts[1],
-                    "owner": parts[2],
-                    "group": parts[3],
-                    "size": parts[4],
-                    "date": f"{parts[5]} {parts[6]} {parts[7]}",
-                    "name": parts[8],
-                }
-            )
+        for line in result.output.strip().split("\n"):
+            entry = parse_ls_line(line)
+            if entry is not None:
+                entries.append(entry)
         return entries
 
     def close(self) -> None:

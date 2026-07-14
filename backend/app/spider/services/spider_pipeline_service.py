@@ -227,26 +227,52 @@ def _fallback_spider_code(target_url: str, *, limit: int = 10) -> str:
                 return None
 
 
+        def _pick_title(node: Any, title_sel: str | None) -> str:
+            candidates: list[str] = []
+            if title_sel:
+                candidates.extend(
+                    el.get_text(" ", strip=True) for el in node.select(title_sel)
+                )
+            for sel in ("span.title", ".title", "h2", "h3", "a[href]"):
+                candidates.extend(
+                    el.get_text(" ", strip=True) for el in node.select(sel)
+                )
+            for text in candidates:
+                cleaned = text.replace("\xa0", " ").strip()
+                if cleaned.startswith("/"):
+                    cleaned = cleaned.lstrip("/").strip()
+                if cleaned:
+                    return cleaned.split("/")[0].strip() or cleaned
+            return ""
+
+
+        def _pick_href(node: Any) -> str:
+            for link in node.select("a[href]"):
+                href = (link.get("href") or "").strip()
+                if href and not href.startswith(("javascript:", "#")):
+                    return href
+            return ""
+
+
         def parse_items(soup: BeautifulSoup) -> list[dict[str, Any]]:
             items: list[dict[str, Any]] = []
             selectors = [
+                ("div.item", "span.title", "small.author", "a.tag"),
                 ("div.quote", "span.text", "small.author", "a.tag"),
-                ("div.item", "a", None, None),
-                ("li", "a", None, None),
+                ("li", "span.title", None, None),
                 ("article", "h2", None, None),
+                ("div.item", None, None, None),
+                ("li", "a", None, None),
             ]
             for container_sel, title_sel, author_sel, tag_sel in selectors:
                 containers = soup.select(container_sel)
                 if not containers:
                     continue
+                batch: list[dict[str, Any]] = []
                 for node in containers[:LIMIT]:
                     try:
-                        title_el = node.select_one(title_sel) if title_sel else node
-                        title = title_el.get_text(strip=True) if title_el else ""
-                        href = title_el.get("href", "") if title_el and title_el.name == "a" else ""
-                        if not href:
-                            link = node.select_one("a[href]")
-                            href = link.get("href", "") if link else ""
+                        title = _pick_title(node, title_sel)
+                        href = _pick_href(node)
                         author = ""
                         if author_sel:
                             author_el = node.select_one(author_sel)
@@ -254,8 +280,8 @@ def _fallback_spider_code(target_url: str, *, limit: int = 10) -> str:
                         tags: list[str] = []
                         if tag_sel:
                             tags = [t.get_text(strip=True) for t in node.select(tag_sel)]
-                        if title or href:
-                            items.append({{
+                        if title and href:
+                            batch.append({{
                                 "title": title,
                                 "url": href,
                                 "author": author,
@@ -263,7 +289,8 @@ def _fallback_spider_code(target_url: str, *, limit: int = 10) -> str:
                             }})
                     except Exception:
                         continue
-                if items:
+                if batch and all(item["title"] for item in batch):
+                    items = batch
                     break
             return items[:LIMIT]
 
@@ -461,6 +488,9 @@ def _codegen_system_prompt(*, scrape_engine: str, limit: int) -> str:
         "- 解析失败不能中断整体流程，用 try/except 跳过坏节点\n"
         "- 无论解析到多少条，都要把 list 写入 scraped_data.json（ensure_ascii=False）；0 条也要写 []\n"
         "- 有有效记录返回 0，0 条记录返回 1\n"
+        "- 每条记录必须同时包含非空 title 与 url；图片海报链接（a>img、文本为空）不能当 title\n"
+        "- 列表页优先用文本节点取标题（如 span.title / .title / h2），href 单独从 a[href] 取\n"
+        "- 若某选择器抽出的 title 大量为空，必须换选择器，禁止写入空 title\n"
         "- 只爬取首页前几条数据即可\n"
         f"- 最多爬取 {limit} 条记录\n"
     )
@@ -617,6 +647,7 @@ async def _execute_spider_with_retry(
     spider_code = workspace.read_text("spider.py") or ""
     exec_result: dict[str, Any] = {"success": False}
     source = code_source
+    fallback_from_error: str | None = None
 
     for attempt in range(3):
         sanitized = _sanitize_python_code(spider_code)
@@ -626,6 +657,8 @@ async def _execute_spider_with_retry(
 
         exec_result = await execute_in_sandbox.ainvoke({"code": spider_code, "timeout": 120})
         if exec_result.get("success"):
+            if fallback_from_error and source == "template":
+                exec_result = {**exec_result, "fallback_from_error": fallback_from_error}
             return exec_result, source
 
         error_msg = str(
@@ -648,6 +681,7 @@ async def _execute_spider_with_retry(
                 continue
 
         if attempt <= 1 and source != "template":
+            fallback_from_error = error_msg
             if scrape_engine == "playwright":
                 spider_code = _fallback_playwright_spider_code(target_url, limit=limit)
             else:
@@ -658,6 +692,8 @@ async def _execute_spider_with_retry(
 
         break
 
+    if fallback_from_error and isinstance(exec_result, dict):
+        exec_result = {**exec_result, "fallback_from_error": fallback_from_error}
     return exec_result, source
 
 
@@ -1022,6 +1058,10 @@ async def spider_pipeline_stream(
     exec_preview = _preview(exec_result)
     if exec_source == "template":
         exec_preview = f"{exec_preview}\n（LLM 代码运行失败，已自动切换为内置爬虫模板）"
+        original_err = str(exec_result.get("fallback_from_error") or "").strip()
+        if original_err:
+            workspace.write_text("llm_exec_error.txt", original_err)
+            exec_preview = f"{exec_preview}\n原始错误: {_preview(original_err, limit=400)}"
     elif exec_source == "llm_runtime_fixed":
         exec_preview = f"{exec_preview}\n（已根据运行错误自动修复代码）"
     if fetch_mode == "playwright":
@@ -1073,11 +1113,36 @@ async def spider_pipeline_stream(
         return
 
     cleaned_json = await clean_data.ainvoke({"raw_data": "raw_data.json"})
-    validation = await validate_data.ainvoke({"data": cleaned_json, "required_fields": None})
+    validation = await validate_data.ainvoke({"data": cleaned_json, "required_fields": ["title"]})
     workspace.write_text(
         "validation_report.json",
         json.dumps(validation, ensure_ascii=False, indent=2),
     )
+    if not validation.get("valid"):
+        yield _workspace_updated_event(workspace)
+        yield _todos_event(completed_through=2, failed_index=3)
+        issues = validation.get("issues") or []
+        detail = (
+            f"清洗后数据缺少必填字段 title（无效 {validation.get('invalid_records', 0)}/"
+            f"{validation.get('total_records', 0)} 条）。"
+        )
+        if issues:
+            detail = f"{detail} 示例: {json.dumps(issues[:3], ensure_ascii=False)}"
+        yield _error_event(
+            code="validation_failed",
+            title="数据校验未通过",
+            detail=detail,
+            hints=[
+                "打开 cleaned_data.json，确认每条记录都有非空 title",
+                "检查 spider.py 选择器是否取到了文本标题（勿用仅含图片的 a 标签）",
+                "换更强的模型重新生成爬虫代码后重试",
+            ],
+            stage="data_processor",
+            recoverable=False,
+        )
+        yield {"type": "done", "source": "agent"}
+        return
+
     for event in await _emit_stage_complete(call_id, _preview(validation)):
         yield event
     yield _todos_event(completed_through=3)
@@ -1091,7 +1156,7 @@ async def spider_pipeline_stream(
         f"- 数据卷: {workspace.volume_name}\n"
         f"- 产出文件: source_page.html, spider.py, raw_data.json, cleaned_data.json\n"
         f"- 数据记录数: {record_count}\n"
-        f"- 数据校验: {'通过' if validation.get('valid') else '存在缺失字段'}"
+        f"- 数据校验: 通过"
     )
     yield {"type": "chunk", "source": "agent", "content": final_content}
     yield {"type": "final_response", "source": "agent", "content": final_content}

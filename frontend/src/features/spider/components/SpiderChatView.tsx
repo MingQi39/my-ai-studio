@@ -29,12 +29,15 @@ export function SpiderChatView({
   const { t } = useTranslation();
   const messages = useSpiderChatStore((s) => s.messages);
   const isGenerating = useSpiderChatStore((s) => s.isGenerating);
+  const generatingSessionId = useSpiderChatStore((s) => s.generatingSessionId);
   const isLoadingHistory = useSpiderChatStore((s) => s.isLoadingHistory);
   const currentSessionId = useSpiderChatStore((s) => s.currentSessionId);
   const targetUrl = useSpiderChatStore((s) => s.targetUrl);
   const setTargetUrl = useSpiderChatStore((s) => s.setTargetUrl);
   const restoreInterruptedHint = useSpiderChatStore((s) => s.restoreInterruptedHint);
   const setRestoreInterruptedHint = useSpiderChatStore((s) => s.setRestoreInterruptedHint);
+  const isViewingLiveRun =
+    isGenerating && (!generatingSessionId || generatingSessionId === currentSessionId);
 
   useSpiderSessionRoute();
   useSpiderSessionRestore();
@@ -44,7 +47,7 @@ export function SpiderChatView({
   const [inputValue, setInputValue] = useState('');
 
   const { scrollContainerRef, scrollSentinelRef, showJumpButton, scrollToBottom } = useChatAutoScroll({
-    deps: [messages, isGenerating],
+    deps: [messages, isViewingLiveRun],
     active: messages.length > 0,
     resetKey: currentSessionId,
   });
@@ -164,7 +167,7 @@ export function SpiderChatView({
             value={inputValue}
             onChange={setInputValue}
             isBusy={isGenerating}
-            onStop={cancelCurrentRequest}
+            onStop={isViewingLiveRun ? cancelCurrentRequest : undefined}
             getPayload={(value) => value.trim() || null}
             onSendPayload={handleSendPayload}
             getQueuedLabel={(payload) => payload}

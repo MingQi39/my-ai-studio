@@ -204,8 +204,14 @@ export function useSpiderChat() {
         }
 
         if (event.type === 'workspace_updated') {
+          const { currentSessionId, generatingSessionId, setWorkspaceFiles } =
+            useSpiderChatStore.getState();
+          // Ignore file updates while viewing a different session.
+          if (generatingSessionId && currentSessionId !== generatingSessionId) {
+            return;
+          }
           if (Array.isArray(event.files)) {
-            useSpiderChatStore.getState().setWorkspaceFiles(
+            setWorkspaceFiles(
               event.files.map((file) => ({
                 name: file.name,
                 size: file.size,

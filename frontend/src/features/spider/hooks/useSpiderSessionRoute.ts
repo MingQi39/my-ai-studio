@@ -21,8 +21,9 @@ export function useSpiderSessionRoute() {
     const store = useSpiderChatStore.getState();
     if (urlId) {
       if (store.currentSessionId !== urlId) {
-        store.setCurrentSessionId(urlId);
-        store.setMessages([]);
+        // Preserve in-flight messages in memory so switching back mid-run
+        // restores the agent progress UI instead of the empty state.
+        store.switchToSession(urlId);
         const cachedTargetUrl = sessionStorage.getItem(spiderTargetUrlStorageKey(urlId)) ?? '';
         store.setTargetUrl(cachedTargetUrl);
       }

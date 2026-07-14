@@ -110,6 +110,8 @@ def build_spider_agent(
 - 只用 requests + BeautifulSoup，禁止 asyncio / await
 - TARGET_URL 必须等于用户给定 URL
 - 无论条数多少都写入 scraped_data.json；有数据 exit 0，无数据 exit 1
+- 每条记录必须含非空 title 与 url；禁止把海报链接（a>img、文本为空）当作 title
+- 列表页标题从文本节点取（如 span.title / .title / h2），href 单独从 a[href] 取
 必须使用 save_spider_code 工具将代码保存到 Docker 沙箱，不要只在对话中输出代码。""",
                 "tools": [save_spider_code, validate_code_syntax],
             },

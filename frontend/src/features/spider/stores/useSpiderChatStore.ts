@@ -8,6 +8,11 @@ import {
   SPIDER_GENERATING_SESSION_KEY,
   spiderTargetUrlStorageKey,
 } from '@/features/spider/constants/session';
+import {
+  patchGeneratingMessages,
+  stashSessionMessages,
+  type SpiderMessageCache,
+} from '@/features/spider/stores/sessionMessageCache';
 
 function syncActiveSessionId(sessionId: string | null) {
   if (sessionId) {
@@ -17,9 +22,19 @@ function syncActiveSessionId(sessionId: string | null) {
   }
 }
 
+function syncGeneratingSessionId(sessionId: string | null) {
+  if (sessionId) {
+    sessionStorage.setItem(SPIDER_GENERATING_SESSION_KEY, sessionId);
+  } else {
+    sessionStorage.removeItem(SPIDER_GENERATING_SESSION_KEY);
+  }
+}
+
 interface SpiderChatStore {
   messages: StudioChatMessage[];
+  messageCache: SpiderMessageCache<StudioChatMessage>;
   currentSessionId: string | null;
+  generatingSessionId: string | null;
   isGenerating: boolean;
   isLoadingHistory: boolean;
   sessionListVersion: number;
@@ -32,6 +47,7 @@ interface SpiderChatStore {
   updateMessage: (id: string, updates: Partial<StudioChatMessage>) => void;
   setMessages: (messages: StudioChatMessage[]) => void;
   setCurrentSessionId: (sessionId: string | null) => void;
+  switchToSession: (sessionId: string) => void;
   setGenerating: (generating: boolean) => void;
   setLoadingHistory: (loading: boolean) => void;
   bumpSessionList: () => void;
@@ -44,7 +60,9 @@ interface SpiderChatStore {
 
 export const useSpiderChatStore = create<SpiderChatStore>((set) => ({
   messages: [],
+  messageCache: {},
   currentSessionId: null,
+  generatingSessionId: null,
   isGenerating: false,
   isLoadingHistory: false,
   sessionListVersion: 0,
@@ -53,46 +71,120 @@ export const useSpiderChatStore = create<SpiderChatStore>((set) => ({
   workspaceFiles: [],
   restoreInterruptedHint: false,
 
-  addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+  addMessage: (message) =>
+    set((state) => {
+      const messages = [...state.messages, message];
+      const sessionKey = state.currentSessionId ?? state.generatingSessionId;
+      const messageCache = sessionKey
+        ? { ...state.messageCache, [sessionKey]: messages }
+        : state.messageCache;
+      return { messages, messageCache };
+    }),
 
   updateMessage: (id, updates) =>
-    set((state) => ({
-      messages: state.messages.map((msg) => (msg.id === id ? { ...msg, ...updates } : msg)),
-    })),
+    set((state) =>
+      patchGeneratingMessages({
+        messages: state.messages,
+        messageCache: state.messageCache,
+        currentSessionId: state.currentSessionId,
+        generatingSessionId: state.generatingSessionId,
+        messageId: id,
+        updates,
+      }),
+    ),
 
-  setMessages: (messages) => set({ messages }),
+  setMessages: (messages) =>
+    set((state) => {
+      const messageCache = state.currentSessionId
+        ? { ...state.messageCache, [state.currentSessionId]: messages }
+        : state.messageCache;
+      return { messages, messageCache };
+    }),
+
   setCurrentSessionId: (sessionId) => {
     syncActiveSessionId(sessionId);
-    if (sessionId && useSpiderChatStore.getState().isGenerating) {
-      sessionStorage.setItem(SPIDER_GENERATING_SESSION_KEY, sessionId);
-    }
-    set({ currentSessionId: sessionId });
+    set((state) => {
+      let generatingSessionId = state.generatingSessionId;
+      let messageCache = state.messageCache;
+
+      // First SSE session event during a new run: bind generating id to the new session.
+      if (state.isGenerating && sessionId && !generatingSessionId) {
+        generatingSessionId = sessionId;
+        messageCache = { ...messageCache, [sessionId]: state.messages };
+        syncGeneratingSessionId(sessionId);
+      } else if (generatingSessionId) {
+        syncGeneratingSessionId(generatingSessionId);
+      }
+
+      return {
+        currentSessionId: sessionId,
+        generatingSessionId,
+        messageCache,
+      };
+    });
   },
+
+  switchToSession: (sessionId) => {
+    syncActiveSessionId(sessionId);
+    set((state) => {
+      const messageCache = stashSessionMessages(
+        state.messageCache,
+        state.currentSessionId,
+        state.messages,
+      );
+      return {
+        currentSessionId: sessionId,
+        messages: messageCache[sessionId] ?? [],
+        messageCache,
+        restoreInterruptedHint: false,
+        workspaceFiles: [],
+        isLoadingHistory: false,
+      };
+    });
+  },
+
   setGenerating: (isGenerating) => {
-    const sessionId = useSpiderChatStore.getState().currentSessionId;
-    if (isGenerating && sessionId) {
-      sessionStorage.setItem(SPIDER_GENERATING_SESSION_KEY, sessionId);
-    } else {
-      sessionStorage.removeItem(SPIDER_GENERATING_SESSION_KEY);
-    }
-    set({ isGenerating });
+    set((state) => {
+      if (isGenerating) {
+        const generatingSessionId = state.currentSessionId;
+        syncGeneratingSessionId(generatingSessionId);
+        const messageCache =
+          generatingSessionId != null
+            ? { ...state.messageCache, [generatingSessionId]: state.messages }
+            : state.messageCache;
+        return { isGenerating: true, generatingSessionId, messageCache };
+      }
+      syncGeneratingSessionId(null);
+      return { isGenerating: false, generatingSessionId: null };
+    });
   },
+
   setLoadingHistory: (isLoadingHistory) => set({ isLoadingHistory }),
   bumpSessionList: () => set((state) => ({ sessionListVersion: state.sessionListVersion + 1 })),
   clearMessages: () => set({ messages: [], workspaceFiles: [] }),
   startNewSession: () => {
     syncActiveSessionId(null);
     sessionStorage.removeItem(SPIDER_DRAFT_TARGET_URL_KEY);
-    sessionStorage.removeItem(SPIDER_GENERATING_SESSION_KEY);
-    set((state) => ({
-      messages: [],
-      currentSessionId: null,
-      isLoadingHistory: false,
-      workspaceFiles: [],
-      targetUrl: '',
-      restoreInterruptedHint: false,
-      sessionEpoch: state.sessionEpoch + 1,
-    }));
+    set((state) => {
+      const messageCache = stashSessionMessages(
+        state.messageCache,
+        state.currentSessionId,
+        state.messages,
+      );
+      if (!state.isGenerating) {
+        syncGeneratingSessionId(null);
+      }
+      return {
+        messages: [],
+        messageCache,
+        currentSessionId: null,
+        isLoadingHistory: false,
+        workspaceFiles: [],
+        targetUrl: '',
+        restoreInterruptedHint: false,
+        sessionEpoch: state.sessionEpoch + 1,
+      };
+    });
   },
   setTargetUrl: (targetUrl) => {
     const sessionId = useSpiderChatStore.getState().currentSessionId;

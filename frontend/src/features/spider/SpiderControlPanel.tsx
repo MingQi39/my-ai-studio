@@ -41,6 +41,9 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
   const navigate = useNavigate();
   const currentSessionId = useSpiderChatStore((s) => s.currentSessionId);
   const isGenerating = useSpiderChatStore((s) => s.isGenerating);
+  const generatingSessionId = useSpiderChatStore((s) => s.generatingSessionId);
+  const isSessionGenerating =
+    isGenerating && (!generatingSessionId || generatingSessionId === currentSessionId);
   const { title: sessionTitle, targetUrl } = useSpiderSessionLabel(currentSessionId);
   const { workspaceFiles, refreshWorkspace } = useSpiderWorkspace();
 
@@ -51,12 +54,12 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
   }, [isOpen, currentSessionId, refreshWorkspace]);
 
   useEffect(() => {
-    if (!isOpen || !currentSessionId || !isGenerating) return;
+    if (!isOpen || !currentSessionId || !isSessionGenerating) return;
     const timer = window.setInterval(() => {
       void refreshWorkspace();
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [isOpen, currentSessionId, isGenerating, refreshWorkspace]);
+  }, [isOpen, currentSessionId, isSessionGenerating, refreshWorkspace]);
 
   if (!isOpen) return null;
 
@@ -129,7 +132,7 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
                 disabled={!currentSessionId}
                 aria-label={t('common.refresh', { defaultValue: '刷新' })}
               >
-                <RefreshCw size={14} className={cn(isGenerating && 'animate-spin')} />
+                <RefreshCw size={14} className={cn(isSessionGenerating && 'animate-spin')} />
               </Button>
             </div>
           </div>
@@ -141,7 +144,7 @@ export function SpiderControlPanel({ selectedModel, onOpenModelSettings, isOpen,
           ) : workspaceFiles.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--border-color)] p-5 text-center">
               <p className="break-words text-sm text-[var(--text-secondary)]">
-                {isGenerating ? t('spider.panel.syncing') : t('spider.panel.noFiles')}
+                {isSessionGenerating ? t('spider.panel.syncing') : t('spider.panel.noFiles')}
               </p>
             </div>
           ) : (

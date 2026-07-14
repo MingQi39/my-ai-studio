@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.spider.services.docker_backend import DockerBackend
+from app.spider.services.file_mtime import format_file_mtime
 
 
 @dataclass
@@ -69,11 +70,16 @@ class SandboxWorkspace:
                 size = int(entry.get("size", 0))
             except (TypeError, ValueError):
                 size = 0
+            mtime = entry.get("mtime")
+            if isinstance(mtime, (int, float)):
+                modified_at = format_file_mtime(mtime)
+            else:
+                modified_at = time.strftime("%b %d %H:%M")
             files.append(
                 {
                     "name": name,
                     "size": size,
-                    "modified_at": entry.get("date") or time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "modified_at": modified_at,
                 }
             )
         return sorted(files, key=lambda item: item["name"])
