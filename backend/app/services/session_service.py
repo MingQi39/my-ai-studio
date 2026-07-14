@@ -101,8 +101,11 @@ class SessionService(BaseService):
                 )
             )
             .options(
-                selectinload(Session.messages),
-                selectinload(Session.config)
+                selectinload(Session.messages).selectinload(Message.attachments).selectinload(
+                    MessageAttachment.file
+                ),
+                selectinload(Session.messages).selectinload(Message.tool_executions),
+                selectinload(Session.config),
             )
         )
         result = await self.db.execute(stmt)
@@ -391,6 +394,39 @@ class SessionService(BaseService):
         await self.db.refresh(message)
 
         self.logger.info(f"Message added to session {session_id}")
+        return message
+
+    async def update_message(
+        self,
+        message_id: UUID,
+        *,
+        content: str | None = None,
+        tool_calls: list[dict] | None = None,
+        is_complete: bool | None = None,
+        thinking_content: str | None = None,
+    ) -> Optional[Message]:
+        """Update an existing message's content / tool_calls / completion flag."""
+        message = await self.get_message(message_id)
+        if not message:
+            return None
+
+        if content is not None:
+            message.content = content
+        if tool_calls is not None:
+            message.tool_calls = tool_calls
+        if is_complete is not None:
+            message.is_complete = is_complete
+        if thinking_content is not None:
+            message.thinking_content = thinking_content
+
+        stmt = select(Session).where(Session.id == message.session_id)
+        result = await self.db.execute(stmt)
+        session = result.scalar_one_or_none()
+        if session:
+            session.updated_at = datetime.utcnow()
+
+        await self.db.commit()
+        await self.db.refresh(message)
         return message
 
     async def get_messages(

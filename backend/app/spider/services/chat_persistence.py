@@ -97,15 +97,50 @@ async def save_spider_assistant_message(
     failure: dict[str, Any] | None = None,
     todos: list[dict[str, Any]] | None = None,
 ) -> None:
-    await session_service.add_message(
-        session_id,
-        MessageCreate(
-            role=MessageRole.assistant,
-            content=content,
-            tool_calls=build_spider_tool_calls(
-                tool_trace=tool_trace,
-                failure=failure,
-                todos=todos,
-            ),
-        ),
+    await upsert_spider_assistant_message(
+        session_service=session_service,
+        session_id=session_id,
+        message_id=None,
+        content=content,
+        tool_trace=tool_trace,
+        failure=failure,
+        todos=todos,
+        is_complete=True,
     )
+
+
+async def upsert_spider_assistant_message(
+    session_service: SessionService,
+    session_id: UUID,
+    content: str,
+    *,
+    message_id: UUID | None = None,
+    tool_trace: list[dict[str, Any]] | None = None,
+    failure: dict[str, Any] | None = None,
+    todos: list[dict[str, Any]] | None = None,
+    is_complete: bool = True,
+) -> UUID:
+    tool_calls = build_spider_tool_calls(
+        tool_trace=tool_trace,
+        failure=failure,
+        todos=todos,
+    )
+    if message_id is None:
+        message = await session_service.add_message(
+            session_id,
+            MessageCreate(
+                role=MessageRole.assistant,
+                content=content,
+                tool_calls=tool_calls,
+                is_complete=is_complete,
+            ),
+        )
+        return UUID(str(message.id))
+
+    await session_service.update_message(
+        message_id,
+        content=content,
+        tool_calls=tool_calls,
+        is_complete=is_complete,
+    )
+    return message_id
