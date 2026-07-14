@@ -23,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { EllipsisTooltip } from "@/components/EllipsisTooltip";
 import { cn } from "@/components/ui/utils";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { EllipsisTooltip } from "@/components/EllipsisTooltip";
 import {
   ChatEmptyState,
   ChatInputArea,
