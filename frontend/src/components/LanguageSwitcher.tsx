@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Globe, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGS, setLanguage, type SupportedLang } from '@/i18n';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 
 interface LanguageSwitcherProps {
@@ -146,7 +147,7 @@ export function LanguageSwitcher({
                       : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]',
                 )}
               >
-                <span className="truncate">{lang.label}</span>
+                <EllipsisTooltip>{lang.label}</EllipsisTooltip>
                 {active && <Check size={14} className="flex-shrink-0" />}
               </button>
             );

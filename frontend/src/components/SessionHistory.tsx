@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, Trash2, MessageSquare, Calendar } from 'lucide-react';
 import { SessionResponse, listSessions, deleteSession as apiDeleteSession } from '@/services/api';
 import { toast } from 'sonner';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface SessionHistoryProps {
@@ -193,12 +194,12 @@ export function SessionHistory({ onSelectSession, currentSessionId, isDarkMode }
 
                                             {/* Session info */}
                                             <div className="flex-1 min-w-0">
-                                                <p className={`
-                          text-sm font-medium truncate
+                                                <EllipsisTooltip className={`
+                          text-sm font-medium
                           ${isActive ? 'text-[var(--nav-active-text)]' : 'text-[var(--text-primary)]'}
-                        `}>
+                        `} as="p">
                                                     {session.title || t('sessionHistory.untitled')}
-                                                </p>
+                                                </EllipsisTooltip>
                                                 <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                                                     {t('sessionHistory.messages', { count: session.message_count })} · {formatDate(session.updated_at)}
                                                 </p>

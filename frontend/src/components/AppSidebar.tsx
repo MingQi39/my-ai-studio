@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -696,9 +697,9 @@ export function AppSidebar({
                   <AvatarImage src="https://github.com/MingQi39.png" />
                   <AvatarFallback>{currentUser?.username?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
                 </Avatar>
-                <span className="text-sm font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate flex-1">
+                <EllipsisTooltip className="flex-1 text-sm font-medium text-[var(--text-secondary)] transition-colors group-hover:text-[var(--text-primary)]">
                   {currentUser?.username || t('sidebar.user')}
-                </span>
+                </EllipsisTooltip>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -710,8 +711,12 @@ export function AppSidebar({
                 <>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium truncate">{currentUser.username}</span>
-                      <span className="text-xs text-[var(--text-secondary)] truncate">{currentUser.email}</span>
+                      <EllipsisTooltip className="text-sm font-medium">
+                        {currentUser.username}
+                      </EllipsisTooltip>
+                      <EllipsisTooltip className="text-xs text-[var(--text-secondary)]">
+                        {currentUser.email}
+                      </EllipsisTooltip>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-[var(--border-color)]" />
@@ -827,12 +832,12 @@ function AgentSessionHistoryRow({
       <MessageSquare size={14} className="shrink-0" />
 
       <div className="min-w-0 overflow-hidden">
-        <p className="truncate font-medium">
+        <EllipsisTooltip as="p" className="font-medium">
           {session.title || t('sidebar.untitledSession')}
-        </p>
-        <p className="text-[10px] text-[var(--text-secondary)] truncate">
-          {t('sidebar.messageCount', { count: session.message_count })} · {formatDate(session.updated_at)}
-        </p>
+        </EllipsisTooltip>
+        <EllipsisTooltip as="p" className="text-[10px] text-[var(--text-secondary)]">
+          {`${t('sidebar.messageCount', { count: session.message_count })} · ${formatDate(session.updated_at)}`}
+        </EllipsisTooltip>
       </div>
 
       <button

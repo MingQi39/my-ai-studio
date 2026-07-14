@@ -20,8 +20,10 @@ import {
   FileJson,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EllipsisTooltip } from "@/components/EllipsisTooltip";
 import { cn } from "@/components/ui/utils";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { EllipsisTooltip } from "@/components/EllipsisTooltip";
 import {
   ChatEmptyState,
   ChatInputArea,
@@ -205,9 +207,9 @@ export function MainWorkspace({
             (() => {
               const currentSession = sessions.find((session) => session.id === currentSessionId);
               return currentSession ? (
-                <span className="text-sm font-medium text-[var(--text-primary)] truncate max-w-full sm:max-w-[400px] inline-block">
+                <EllipsisTooltip className="inline-block max-w-full text-sm font-medium text-[var(--text-primary)] sm:max-w-[400px]">
                   {currentSession.title || t("workspace.untitledSession")}
-                </span>
+                </EllipsisTooltip>
               ) : null;
             })()}
         </div>

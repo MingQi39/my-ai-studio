@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BrandLogo } from '@/components/BrandLogo';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 import { listModelConfigs, type ModelConfigResponse, type SessionResponse } from '@/services/api';
 
@@ -203,7 +204,9 @@ export function StudioLaunchpad({
                     className="flex items-center justify-between px-4 py-3 hover:bg-[var(--bg-hover)] cursor-pointer transition-colors border-b border-[var(--border-color)] last:border-b-0 group"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">{session.title}</p>
+                      <EllipsisTooltip as="p" className="text-sm font-medium text-[var(--text-primary)]">
+                        {session.title}
+                      </EllipsisTooltip>
                       <p className="text-xs text-[var(--text-secondary)]">
                         {t('sidebar.messageCount', { count: session.message_count })} ·{' '}
                         {new Date(session.updated_at).toLocaleDateString(i18n.language)}
