@@ -9,6 +9,14 @@ from bs4 import BeautifulSoup
 _TEXT_THRESHOLD = 500
 _CF_CHALLENGE_TOKENS = ("just a moment", "checking your browser", "cf-challenge", "attention required")
 _CAPTCHA_TOKENS = ("captcha", "recaptcha", "验证码", "hcaptcha")
+_VISITOR_WALL_TOKENS = (
+    "sina visitor system",
+    "visitor system",
+    "/visitor/visitor",
+    "passport.weibo.com/visitor",
+    "请先登录",
+    "login required",
+)
 
 _ERROR_HINTS: dict[str, list[str]] = {
     "fetch_failed": [
@@ -17,7 +25,7 @@ _ERROR_HINTS: dict[str, list[str]] = {
         "若需 JS 渲染，将 SPIDER_DOCKER_IMAGE 换为 Playwright 镜像后重试",
     ],
     "anti_scrape_hard": [
-        "目标页需要人工验证码，当前不支持自动绕过",
+        "目标页需要人工验证或登录态，当前不支持自动绕过 / Cookie 注入",
         "请换更开放的公开列表页，或稍后再试",
     ],
     "browser_image_unavailable": [
@@ -51,6 +59,21 @@ def classify_fetch_result(
     lowered = content.lower()
     mechanisms: list[str] = []
     recommendations: list[str] = []
+
+    url_lower = (url or "").lower()
+    haystack = f"{lowered}\n{url_lower}"
+    if any(t in haystack for t in _VISITOR_WALL_TOKENS):
+        return {
+            "url": url,
+            "level": "hard",
+            "detected_mechanisms": ["Login/Visitor Wall"],
+            "recommendations": ["需要登录态或换公开列表页；当前不自动绕过"],
+            "escalate_to_browser": False,
+            "block_hard": True,
+            "has_anti_scraping": True,
+            "success": True,
+            "status_code": status_code,
+        }
 
     has_captcha = any(t in lowered for t in _CAPTCHA_TOKENS)
     if has_captcha:

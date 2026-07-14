@@ -10,6 +10,7 @@ import pytest
 from app.spider.services.spider_pipeline_service import (
     _execute_spider_with_retry,
     decide_initial_fetch_mode,
+    is_empty_scrape_result,
     should_escalate_after_empty_scrape,
     spider_pipeline_stream,
 )
@@ -59,6 +60,45 @@ def test_should_escalate_after_empty_scrape():
     assert should_escalate_after_empty_scrape(
         scrape_engine="requests", anti_level="js_render", already_escalated=False
     )
+
+
+def test_is_empty_scrape_when_saved_zero_records_nonzero_exit():
+    exec_result = {
+        "success": False,
+        "data_saved": False,
+        "exit_code": 1,
+        "record_count": 0,
+        "data_file": "scraped_data.json",
+        "error": "2026-07-14 06:50:25,825 INFO saved 0 records",
+        "output_preview": "2026-07-14 06:50:25,825 INFO saved 0 records",
+    }
+    detail = str(exec_result["error"])
+    assert is_empty_scrape_result(exec_result, detail) is True
+
+
+def test_is_empty_scrape_when_exit_zero_no_data():
+    exec_result = {
+        "success": False,
+        "data_saved": False,
+        "exit_code": 0,
+        "record_count": 0,
+        "data_file": "scraped_data.json",
+        "error": "脚本退出码为 0，但 scraped_data.json 为空（0 条有效记录）。",
+    }
+    assert is_empty_scrape_result(exec_result, exec_result["error"]) is True
+
+
+def test_not_empty_scrape_on_real_runtime_error():
+    exec_result = {
+        "success": False,
+        "data_saved": False,
+        "exit_code": 1,
+        "record_count": 0,
+        "data_file": None,
+        "error": "ModuleNotFoundError: No module named 'foo'",
+        "output_preview": "ModuleNotFoundError: No module named 'foo'",
+    }
+    assert is_empty_scrape_result(exec_result, exec_result["error"]) is False
 
 
 @pytest.mark.asyncio

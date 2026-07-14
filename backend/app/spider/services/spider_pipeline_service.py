@@ -452,6 +452,20 @@ def should_escalate_after_empty_scrape(
     return anti_level in {"soft", "js_render"}
 
 
+def is_empty_scrape_result(exec_result: dict[str, Any], detail: str) -> bool:
+    """True when failure is zero usable records, not a runtime crash."""
+    if exec_result.get("data_saved"):
+        return False
+    detail_l = (detail or "").lower()
+    if "scraped_data.json" in detail_l or "0 条" in detail or "saved 0 records" in detail_l:
+        return True
+    if int(exec_result.get("exit_code") or 1) == 0:
+        return True
+    if exec_result.get("data_file") and int(exec_result.get("record_count") or 0) == 0:
+        return True
+    return False
+
+
 async def _validate_python_code(code: str) -> dict[str, Any]:
     return await validate_code_syntax.ainvoke({"code": code})
 
@@ -949,10 +963,7 @@ async def spider_pipeline_stream(
     )
     if not exec_result.get("success"):
         detail = str(exec_result.get("error") or exec_result.get("output_preview") or "未知执行错误")
-        no_data = (
-            not exec_result.get("data_saved")
-            and int(exec_result.get("exit_code") or 1) == 0
-        ) or "scraped_data.json" in detail or "0 条" in detail
+        no_data = is_empty_scrape_result(exec_result, detail)
 
         if no_data and should_escalate_after_empty_scrape(
             scrape_engine=scrape_engine,
@@ -1037,10 +1048,7 @@ async def spider_pipeline_stream(
 
         if not exec_result.get("success"):
             detail = str(exec_result.get("error") or exec_result.get("output_preview") or "未知执行错误")
-            no_data = (
-                not exec_result.get("data_saved")
-                and int(exec_result.get("exit_code") or 1) == 0
-            ) or "scraped_data.json" in detail or "0 条" in detail
+            no_data = is_empty_scrape_result(exec_result, detail)
             err_code = "empty_scrape" if no_data else "execution_failed"
             yield _workspace_updated_event(workspace)
             yield _todos_event(completed_through=1, failed_index=2)

@@ -67,14 +67,18 @@
 | `none` | 正常 HTML 列表/内容页特征 | HTTP + requests 路径 |
 | `soft` | 轻度限流/空壳怀疑，但仍可能有可用 HTML | 先继续 HTTP 路径；若后续 fetch 失败或执行空数据，再升级（见 §2.2） |
 | `js_render` | 大量 script、正文极少；或明确 SPA/挑战前壳页 | **立即** `escalate_to_browser=true` |
-| `hard` | CAPTCHA / reCAPTCHA / 明确人机验证文案；或持续 Cloudflare 挑战页且浏览器也无解（事后） | `block_hard=true`，不进入「指望自动过验证」路径 |
+| `hard` | CAPTCHA / reCAPTCHA / 明确人机验证文案；访客系统 / 登录墙；或持续 Cloudflare 挑战页且浏览器也无解（事后） | `block_hard=true`，不进入「指望自动过验证」路径 |
 
 启发式（首版可迭代，但契约固定）：
 
 - HTML 含 `cloudflare` 且含挑战/等待关键字 → `js_render`（允许浏览器升级一次）；浏览器后仍为挑战页 → 再标 `hard` 并失败。
 - `captcha` / `recaptcha` / `验证码` → `hard`（不升级硬破）。
+- **访客 / 登录墙**（与 CAPTCHA 同等 `hard`，检测到即停，**不**再 Playwright）：命中任一即 `block_hard=true`，`detected_mechanisms` 含 `Login/Visitor Wall`：
+  - 标题或正文含 `sina visitor system` / `visitor system`
+  - URL 或跳转链含 `passport.weibo.com/visitor`、`/visitor/visitor`
+  - 常见登录墙文案：`请先登录`、`login required`、`passport` 登录跳转壳（与 CAPTCHA 同优先级：在 `js_render` 脚本启发式**之前**判定）
 - `script` 多且可见文本 &lt; 阈值（沿用现状 ~500）→ `js_render`。
-- HTTP 状态 `403`/`429`/`503`：分级函数接收 `status_code`；无 CAPTCHA 正文时标 `soft` 并按 §2.2 尝试 Playwright 一次；明确人机验证正文则 `hard`。
+- HTTP 状态 `403`/`429`/`503`：分级函数接收 `status_code`；无 CAPTCHA/访客墙正文时标 `soft` 并按 §2.2 尝试 Playwright 一次；明确人机验证或访客墙正文则 `hard`。
 
 ### 2.2 升级触发条件（Pipeline）
 
@@ -93,13 +97,26 @@
 | code | 场景 |
 |---|---|
 | `fetch_failed` | HTTP 与（若尝试）Playwright 均失败 |
-| `anti_scrape_hard` | CAPTCHA / 验证墙 |
+| `anti_scrape_hard` | CAPTCHA / 验证墙 / 访客系统 / 登录墙 |
 | `browser_image_unavailable` | 需升级但镜像无 Playwright/Chromium |
 | `browser_fetch_failed` | 沙箱 Playwright 抓取失败 |
-| `empty_scrape` | 升级后仍无数据（保留现有语义） |
-| `execution_failed` | 脚本执行非空数据类失败 |
+| `empty_scrape` | 无有效爬取记录（含：exit 0 且 0 条；或 exit≠0 但产出空 `scraped_data.json` / 日志 `saved 0 records`） |
+| `execution_failed` | 脚本真正运行异常（语法/依赖/非空数据类失败），**不得**因「0 条」误标 |
 
 失败卡片 `hints` 按 code 定制，替换泛化「若网站有强反爬…」单一文案。
+
+`anti_scrape_hard` hints 须覆盖访客墙场景，至少包含：当前不支持登录态 / Cookie；请换更开放的公开列表页。
+
+### 2.4 补丁：访客墙硬失败与空爬取误分类（2026-07-14）
+
+**动机**：微博等站点返回 `Sina Visitor System` 时，现有启发式会因「script 多、正文少」误判为 `js_render`，浪费一轮 Playwright + codegen + 执行，最终以 `saved 0 records` + `execution_failed`（换模型提示）收场，掩盖真实原因。
+
+**契约变更**：
+
+1. `classify_fetch_result`：访客/登录墙 → `hard`（§2.1），优先级高于 `js_render`。
+2. Pipeline 分析阶段已有 `block_hard` → `anti_scrape_hard` 停链路，无需新阶段。
+3. 执行阶段判定 `empty_scrape`：除 `data_saved=false && exit_code==0` 外，若 detail/输出含 `saved 0 records`、`0 条`，或 `scraped_data.json` 存在但记录数为 0，一律 `empty_scrape`；仅非空数据类运行失败才用 `execution_failed`。
+4. **非目标不变**：不做 Cookie 注入、登录自动化。
 
 ---
 
