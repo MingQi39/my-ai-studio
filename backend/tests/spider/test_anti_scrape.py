@@ -1,3 +1,5 @@
+import pytest
+
 from app.spider.services.anti_scrape import classify_fetch_result, hints_for_error_code
 
 
@@ -48,3 +50,15 @@ def test_hints_for_known_codes():
     assert any(("镜像" in h) or ("Playwright" in h) or ("playwright" in h) for h in hints)
     assert hints_for_error_code("anti_scrape_hard")
     assert hints_for_error_code("unknown_xyz")
+
+
+@pytest.mark.asyncio
+async def test_detect_anti_scraping_returns_level_fields():
+    from app.spider.services.tools import detect_anti_scraping
+
+    html = "<html><body>请完成验证码 captcha</body></html>"
+    result = await detect_anti_scraping.ainvoke({"url": "https://x.test", "html": html})
+    assert result["success"] is True
+    assert result["level"] == "hard"
+    assert result["block_hard"] is True
+    assert "has_anti_scraping" in result

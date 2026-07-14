@@ -55,8 +55,12 @@ def get_safe_headers(url: str) -> dict[str, str]:
 
 @tool
 async def fetch_url(url: str, use_selenium: bool = False) -> dict[str, Any]:
-    """获取网页内容并保存到 Docker 沙箱。"""
-    del use_selenium  # reserved for future dynamic-page support
+    """获取网页内容并保存到 Docker 沙箱。
+
+    use_selenium is deprecated and ignored; browser fetch runs inside the Docker
+    sandbox via Playwright escalation.
+    """
+    del use_selenium
 
     try:
         headers = get_safe_headers(url)
@@ -175,43 +179,13 @@ async def analyze_html_structure(html: str = "", html_file: str = "", url: str =
 async def detect_anti_scraping(url: str, html: str = "", html_file: str = "") -> dict[str, Any]:
     """检测反爬虫机制。"""
     try:
+        from app.spider.services.anti_scrape import classify_fetch_result
+
         content = html
         if not content and html_file:
             content = await _read_sandbox_file(html_file) or ""
 
-        recommendations: list[str] = []
-        detected_mechanisms: list[str] = []
-
-        if content:
-            soup = BeautifulSoup(content, "lxml")
-            lowered = content.lower()
-
-            if "cloudflare" in lowered:
-                detected_mechanisms.append("Cloudflare")
-                recommendations.append("使用 cloudscraper 库")
-
-            if any(keyword in lowered for keyword in ["captcha", "recaptcha", "验证码"]):
-                detected_mechanisms.append("CAPTCHA")
-                recommendations.append("需要人工验证或使用验证码识别服务")
-
-            if soup.find_all("script") and len(soup.get_text().strip()) < 500:
-                detected_mechanisms.append("JavaScript Rendering")
-                recommendations.append("使用 Selenium 或 Playwright")
-
-        if not recommendations:
-            recommendations = [
-                "添加随机延迟 (1-3秒)",
-                "使用随机 User-Agent",
-                "设置合理的请求头",
-            ]
-
-        return {
-            "url": url,
-            "detected_mechanisms": detected_mechanisms,
-            "has_anti_scraping": len(detected_mechanisms) > 0,
-            "recommendations": recommendations,
-            "success": True,
-        }
+        return classify_fetch_result(url=url, html=content or "")
     except Exception as exc:
         return {"success": False, "error": str(exc)}
 
