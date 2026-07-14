@@ -5,6 +5,7 @@ import { cn } from '@/components/ui/utils';
 export type ChatToolRun = {
   call_id?: string;
   tool_name: string;
+  raw_tool_name?: string;
   tool_type?: string;
   tool_input?: Record<string, unknown>;
   tool_output?: string;

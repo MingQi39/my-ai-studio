@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { StudioAssistantMessage } from '@/components/chat/StudioAssistantMessage';
 import { UserMessageBubble } from '@/components/chat/UserMessageBubble';
 import type { StudioChatMessage } from '@/hooks/studioChat/types';
@@ -6,9 +6,10 @@ import type { StudioChatMessage } from '@/hooks/studioChat/types';
 interface StudioChatMessageListProps {
   messages: StudioChatMessage[];
   isDarkMode: boolean;
-  scrollSentinelRef: RefObject<HTMLDivElement | null>;
+  scrollSentinelRef?: RefObject<HTMLDivElement | null>;
   onRecoveryRetry?: () => void;
   isRecoveryRetrying?: boolean;
+  renderFailure?: (message: StudioChatMessage) => ReactNode;
 }
 
 export function StudioChatMessageList({
@@ -17,6 +18,7 @@ export function StudioChatMessageList({
   scrollSentinelRef,
   onRecoveryRetry,
   isRecoveryRetrying = false,
+  renderFailure,
 }: StudioChatMessageListProps) {
   return (
     <div className="max-w-[900px] mx-auto py-6 sm:py-10 px-3 sm:px-6 flex flex-col gap-6 sm:gap-10">
@@ -49,10 +51,13 @@ export function StudioChatMessageList({
           ) : (
             <StudioAssistantMessage
               thinking={msg.thinking}
+              statusLabel={msg.statusLabel}
               isThinking={msg.isThinking}
+              todos={msg.todos}
               toolRuns={msg.toolRuns}
               tool={msg.tool}
               content={msg.content}
+              failureSlot={renderFailure?.(msg)}
               isDarkMode={isDarkMode}
               recoveryPrompt={msg.recoveryPrompt}
               onRecoveryRetry={msg.recoveryPrompt ? onRecoveryRetry : undefined}
@@ -62,7 +67,9 @@ export function StudioChatMessageList({
         </div>
       ))}
 
-      <div ref={scrollSentinelRef} className="h-px w-full shrink-0" aria-hidden />
+      {scrollSentinelRef ? (
+        <div ref={scrollSentinelRef} className="h-px w-full shrink-0" aria-hidden />
+      ) : null}
     </div>
   );
 }

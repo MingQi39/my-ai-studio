@@ -73,6 +73,7 @@
     "messageCount": "{{count}} msgs",
     "travelAgent": "Travel Agent",
     "fitnessAgent": "Fitness Agent",
+    "spiderAgent": "Spider Agent",
     "settings": "Settings",
     "lightMode": "Light mode",
     "darkMode": "Dark mode",
@@ -527,6 +528,94 @@
       "deleteEntry": "Delete entry ID: {{id}}",
       "replyPlaceholder": "Reply \"confirm\" or \"cancel\", or use the card above",
       "replyHint": "An action is awaiting confirmation. Reply \"confirm\" or \"cancel\", or use the yellow card above."
+    }
+  },
+  "spider": {
+    "sidebar": {
+      "backToWorkspace": "Back to workspace",
+      "agentTitle": "Spider Agent",
+      "subtitle": "DeepAgents web crawler automation",
+      "history": "Task history",
+      "newChat": "New task",
+      "files": "Workspace files",
+      "noSessions": "No tasks yet"
+    },
+    "panel": {
+      "title": "Spider control panel",
+      "subtitle": "Workspace files and workflow",
+      "model": "Current model",
+      "modelUnset": "No model configured",
+      "workspace": "Workspace files",
+      "noSession": "Start a conversation to see workspace files",
+      "noFiles": "No output files yet",
+      "syncing": "Task running — file list updates automatically",
+      "flowTitle": "Standard orchestration flow",
+      "flowAnalyze": "Site analysis (web_analyzer)",
+      "flowGenerate": "Code generation (code_generator)",
+      "flowExecute": "Docker sandbox execution (debug_agent)",
+      "flowClean": "Data cleaning (data_processor)",
+      "modelHint": "Use an official API model (e.g. DeepSeek / OpenAI). Small local Ollama models may fail at code generation."
+    },
+    "chat": {
+      "placeholder": "Describe your crawler task, e.g. scrape movie titles and links from the homepage…",
+      "targetUrl": "Target URL",
+      "targetUrlPlaceholder": "https://movie.douban.com/top250",
+      "urlHint": "Fill in a list-page URL first (not just a site homepage). The orchestrator will run analysis, codegen, execution, and cleaning.",
+      "emptyTitle": "DeepAgents spider orchestration",
+      "emptyDescription": "Provide a target site and requirements. The orchestrator delegates to sub-agents automatically.",
+      "tryTasks": "Try these tasks",
+      "suggestion1Title": "Scrape movie titles and links",
+      "suggestion1Prompt": "Analyze the target site structure and scrape movie titles and links",
+      "suggestion2Title": "Scrape list titles, ratings, and details",
+      "suggestion2Prompt": "Scrape list page titles, ratings, and detail links",
+      "suggestion3Title": "Generate code and run in sandbox",
+      "suggestion3Prompt": "Generate spider code, run in sandbox, and output cleaned JSON",
+      "suggestion1": "Analyze https://movie.douban.com/top250 and scrape movie titles and links",
+      "suggestion2": "Scrape list page titles, ratings, and detail links",
+      "suggestion3": "Generate spider code, run in sandbox, and output cleaned JSON",
+      "thinking": "Orchestrator is planning the task…",
+      "runningTool": "Running: {{tool}}",
+      "subagentWorking": "Sub-agent {{name}} is working…",
+      "done": "Task completed",
+      "error": "Spider task failed",
+      "streamError": "Stream interrupted. Check backend, Docker, and model config.",
+      "restoreInterrupted": "Page refresh interrupted the live run. Workspace files on the right will sync automatically; if the backend is still running, new outputs will appear shortly.",
+      "modelRequired": "Configure a model connection in settings first",
+      "progress": {
+        "slow": "(This step is taking longer…)"
+      },
+      "todos": {
+        "completedCount": "{{completed}}/{{total}} completed",
+        "collapse": "Collapse task list",
+        "expand": "Expand task list",
+        "toolDetails": "Tool details",
+        "inProgress": "In progress"
+      }
+    },
+    "failure": {
+      "stageLabel": "Failed stage: {{stage}}",
+      "hintsTitle": "What you can try",
+      "recoverableHint": "You can adjust the input and retry.",
+      "stage": {
+        "web_analyzer": "Site analysis",
+        "code_generator": "Code generation",
+        "debug_agent": "Sandbox execution",
+        "data_processor": "Data cleaning"
+      }
+    },
+    "files": {
+      "title": "Workspace files",
+      "subtitle": "View output files from the Docker sandbox",
+      "sessionScope": "Current task: {{title}}",
+      "unnamedSession": "Untitled task",
+      "empty": "Select a file from the list to preview",
+      "goToChat": "Start a task",
+      "loadFailed": "Failed to load file",
+      "previewDescription": "Previewing {{name}}",
+      "unsupported": "This file type cannot be previewed. You can download it instead.",
+      "downloaded": "Downloaded {{name}}",
+      "downloadFailed": "Download failed",
+      "download": "Download"
     }
   }
 }

@@ -73,6 +73,7 @@
     "messageCount": "{{count}} 条",
     "travelAgent": "旅行规划 Agent",
     "fitnessAgent": "健身饮食 Agent",
+    "spiderAgent": "爬虫自动化 Agent",
     "settings": "设置",
     "lightMode": "浅色模式",
     "darkMode": "深色模式",
@@ -527,6 +528,94 @@
       "deleteEntry": "删除记录 ID：{{id}}",
       "replyPlaceholder": "回复「确认」或「取消」，也可点击上方确认卡片",
       "replyHint": "当前有待确认操作，请回复「确认」或「取消」，或点击上方黄色确认卡片"
+    }
+  },
+  "spider": {
+    "sidebar": {
+      "backToWorkspace": "返回工作台",
+      "agentTitle": "爬虫自动化 Agent",
+      "subtitle": "DeepAgents 全自动爬虫",
+      "history": "任务历史",
+      "newChat": "新建任务",
+      "files": "工作区文件",
+      "noSessions": "暂无任务"
+    },
+    "panel": {
+      "title": "爬虫控制面板",
+      "subtitle": "工作区文件与运行流程",
+      "model": "当前模型",
+      "modelUnset": "未配置模型",
+      "workspace": "工作区文件",
+      "noSession": "开始对话后将显示工作区文件",
+      "noFiles": "暂无产出文件",
+      "syncing": "任务进行中，文件列表会自动更新",
+      "flowTitle": "标准编排流程",
+      "flowAnalyze": "网站结构分析 (web_analyzer)",
+      "flowGenerate": "爬虫代码生成 (code_generator)",
+      "flowExecute": "Docker 沙箱执行 (debug_agent)",
+      "flowClean": "数据清洗 (data_processor)",
+      "modelHint": "建议使用官方 API 模型（如 DeepSeek / OpenAI），本地 Ollama 小模型可能导致代码生成失败。"
+    },
+    "chat": {
+      "placeholder": "描述你的爬虫需求，例如：爬取首页电影标题和链接…",
+      "targetUrl": "目标网址",
+      "targetUrlPlaceholder": "https://movie.douban.com/top250",
+      "urlHint": "建议填写列表页网址（不要只填站点首页）。Agent 会自动编排分析、生成、执行与清洗流程。",
+      "emptyTitle": "DeepAgents 爬虫编排",
+      "emptyDescription": "输入目标网站和需求，Orchestrator 将自动调度子智能体完成全流程。",
+      "tryTasks": "试试这些任务",
+      "suggestion1Title": "爬取电影标题和链接",
+      "suggestion1Prompt": "分析目标网站首页结构，爬取电影标题和链接",
+      "suggestion2Title": "爬取列表页标题、评分和详情",
+      "suggestion2Prompt": "爬取目标网站列表页标题、评分和详情链接",
+      "suggestion3Title": "生成代码并在沙箱执行",
+      "suggestion3Prompt": "生成爬虫代码并在沙箱中执行，输出清洗后的 JSON",
+      "suggestion1": "分析 https://movie.douban.com/top250 并爬取电影标题和链接",
+      "suggestion2": "爬取目标网站列表页标题、评分和详情链接",
+      "suggestion3": "生成爬虫代码并在沙箱中执行，输出清洗后的 JSON",
+      "thinking": "Orchestrator 正在规划任务…",
+      "runningTool": "正在执行：{{tool}}",
+      "subagentWorking": "子智能体 {{name}} 正在工作…",
+      "done": "任务处理完成",
+      "error": "爬虫任务执行失败",
+      "streamError": "连接中断，请检查后端、Docker 与模型配置",
+      "restoreInterrupted": "页面刷新中断了实时进度。右侧工作区文件会自动同步；后端任务若仍在跑，稍候即可看到新产出。",
+      "modelRequired": "请先在设置中配置模型连接",
+      "progress": {
+        "slow": "（步骤耗时较长，继续处理中…）"
+      },
+      "todos": {
+        "completedCount": "{{completed}}/{{total}} 已完成",
+        "collapse": "折叠任务列表",
+        "expand": "展开任务列表",
+        "toolDetails": "工具详情",
+        "inProgress": "进行中"
+      }
+    },
+    "failure": {
+      "stageLabel": "失败阶段：{{stage}}",
+      "hintsTitle": "你可以尝试",
+      "recoverableHint": "你可以调整输入后重试。",
+      "stage": {
+        "web_analyzer": "网站结构分析",
+        "code_generator": "爬虫代码生成",
+        "debug_agent": "沙箱执行调试",
+        "data_processor": "数据清洗质检"
+      }
+    },
+    "files": {
+      "title": "工作区文件",
+      "subtitle": "查看 Docker 沙箱中的产出文件",
+      "sessionScope": "当前任务：{{title}}",
+      "unnamedSession": "未命名任务",
+      "empty": "从左侧列表选择文件进行预览",
+      "goToChat": "去开始任务",
+      "loadFailed": "文件加载失败",
+      "previewDescription": "正在预览 {{name}}",
+      "unsupported": "该文件类型暂不支持预览，可尝试下载",
+      "downloaded": "已下载 {{name}}",
+      "downloadFailed": "下载失败",
+      "download": "下载"
     }
   }
 }
