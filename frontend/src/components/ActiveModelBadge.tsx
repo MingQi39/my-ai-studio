@@ -1,5 +1,6 @@
 import { Bot, ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 
 interface ActiveModelBadgeProps {
@@ -40,15 +41,15 @@ export function ActiveModelBadge({
             isConfigured ? 'text-blue-500' : 'text-[var(--text-placeholder)]',
           )}
         />
-        <span
+        <EllipsisTooltip
           className={cn(
-            'truncate font-medium',
+            'font-medium',
             isConfigured ? 'text-[var(--text-primary)]' : 'text-[var(--text-placeholder)]',
           )}
-          title={displayName}
+          tooltip={displayName}
         >
           {secondary ?? primary}
-        </span>
+        </EllipsisTooltip>
       </>
     ) : (
       <>
@@ -59,15 +60,15 @@ export function ActiveModelBadge({
             isConfigured ? 'text-blue-500' : 'text-[var(--text-placeholder)]',
           )}
         />
-        <span
+        <EllipsisTooltip
           className={cn(
-            'truncate text-sm font-medium',
+            'text-sm font-medium',
             isConfigured ? 'text-[var(--text-primary)]' : 'text-[var(--text-placeholder)]',
           )}
-          title={displayName}
+          tooltip={displayName}
         >
           {primary}
-        </span>
+        </EllipsisTooltip>
         {onClick && (
           <ChevronDown
             size={14}

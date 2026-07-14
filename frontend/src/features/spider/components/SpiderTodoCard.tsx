@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, ListTodo, Loader2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 import type { SpiderTodoItem } from '@/features/spider/types/todo';
 
@@ -28,9 +29,9 @@ export function SpiderTodoCard({ todos, isDarkMode = false }: SpiderTodoCardProp
       <div className="flex items-center justify-between gap-2 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2 text-sm text-[var(--text-primary)]">
           <ListTodo size={16} className="shrink-0 text-violet-500" />
-          <span className="truncate font-medium">
+          <EllipsisTooltip className="font-medium">
             {t('spider.chat.todos.completedCount', { completed, total })}
-          </span>
+          </EllipsisTooltip>
         </div>
         <button
           type="button"
@@ -72,19 +73,18 @@ export function SpiderTodoCard({ todos, isDarkMode = false }: SpiderTodoCardProp
                     <span className="block h-4 w-4 rounded-full border border-slate-300" />
                   )}
                 </span>
-                <span
+                <EllipsisTooltip
                   className={cn(
-                    'min-w-0 flex-1 truncate text-sm',
+                    'min-w-0 flex-1 text-sm',
                     isDone
                       ? 'text-[var(--text-secondary)] line-through'
                       : isFailed
                         ? 'text-red-600'
                         : 'text-[var(--text-primary)]',
                   )}
-                  title={todo.content}
                 >
                   {todo.content}
-                </span>
+                </EllipsisTooltip>
               </li>
             );
           })}
