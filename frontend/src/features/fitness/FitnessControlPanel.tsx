@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/components/ui/utils';
 
@@ -226,7 +227,7 @@ export function FitnessControlPanel({ isOpen, onClose }: FitnessControlPanelProp
                       className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 text-xs"
                     >
                       <span className="text-[var(--text-primary)] leading-snug break-words whitespace-normal">
-                        <span className="line-clamp-2">{it.name}</span>{' '}
+                        <EllipsisTooltip lines={2}>{it.name}</EllipsisTooltip>{' '}
                         <span className="text-[var(--text-secondary)] whitespace-nowrap">
                           {it.qty}
                           {it.unit}

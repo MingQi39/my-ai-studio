@@ -1,5 +1,6 @@
 import { Sparkles, UtensilsCrossed } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 import { FitnessSourceBadge } from '@/features/fitness/components/FitnessSourceBadge';
 import { fitnessBranding } from '@/features/fitness/config/branding';
@@ -58,7 +59,9 @@ export function FitnessRecommendationCards({
             </div>
 
             <div className="pr-8">
-              <h4 className="text-sm font-semibold text-[var(--text-primary)] truncate">{rec.title}</h4>
+              <EllipsisTooltip as="h4" className="text-sm font-semibold text-[var(--text-primary)]">
+                {rec.title}
+              </EllipsisTooltip>
               <p className="mt-1 text-xs text-[var(--text-secondary)] flex items-center gap-1">
                 <Sparkles size={12} className="text-emerald-500" />
                 {t('fitness.chat.totalKcal', { kcal: formatKcal(rec.total_kcal) })}

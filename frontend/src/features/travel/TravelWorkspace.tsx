@@ -10,6 +10,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { ActiveModelBadge } from '@/components/ActiveModelBadge';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { TravelChatView } from '@/features/travel/components/TravelChatView';
 import { ReActTimeline } from '@/features/travel/components/ReActTimeline';
 import { useReactStore } from '@/features/travel/stores/useReactStore';
@@ -73,8 +74,15 @@ export function TravelWorkspace({
                         <Menu size={20} />
                     </Button>
                     <div className="min-w-0">
-                        <h1 className="text-sm font-semibold truncate">{pageTitle}</h1>
-                        <p className="text-xs text-[var(--text-secondary)] truncate hidden sm:block">{t('sidebar.travelAgent')}</p>
+                        <EllipsisTooltip as="h1" className="text-sm font-semibold">
+                            {pageTitle}
+                        </EllipsisTooltip>
+                        <EllipsisTooltip
+                            as="p"
+                            className="hidden text-xs text-[var(--text-secondary)] sm:block"
+                        >
+                            {t('sidebar.travelAgent')}
+                        </EllipsisTooltip>
                     </div>
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
@@ -389,12 +397,12 @@ function ToolsView({ showToast }: { showToast: (message: string, type?: string) 
                                         <div className={`w-10 h-10 shrink-0 rounded-lg bg-slate-100 dark:bg-[#0F172A] flex items-center justify-center border border-slate-200 dark:border-slate-700 transition-colors ${tool.enabled ? 'text-slate-600 dark:text-slate-400 group-hover:text-[#3B82F6] group-hover:border-[#3B82F6]/30' : 'text-slate-400 dark:text-slate-600'}`}>
                                             <Icon size={20} />
                                         </div>
-                                        <h3
-                                            className={`font-mono text-sm font-bold leading-snug break-all ${tool.enabled ? 'text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-500'}`}
-                                            title={tool.name}
+                                        <EllipsisTooltip
+                                            as="h3"
+                                            className={`font-mono text-sm font-bold leading-snug ${tool.enabled ? 'text-slate-800 dark:text-slate-200' : 'text-slate-500 dark:text-slate-500'}`}
                                         >
                                             {tool.name}
-                                        </h3>
+                                        </EllipsisTooltip>
                                     </div>
 
                                     {/* 状态切换 Toggle 开关 */}
@@ -477,7 +485,12 @@ function ToolsView({ showToast }: { showToast: (message: string, type?: string) 
                         <div className="h-14 sm:h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-6 bg-slate-50 dark:bg-[#151E2E]">
                             <div className="flex items-center gap-2 min-w-0">
                                 {React.createElement(selectedTool.icon, { size: 18, className: "text-[#3B82F6] shrink-0" })}
-                                <h3 className="font-bold text-slate-800 dark:text-slate-200 font-mono tracking-tight truncate">测试 {selectedTool.name}</h3>
+                                <EllipsisTooltip
+                                    as="h3"
+                                    className="font-mono font-bold tracking-tight text-slate-800 dark:text-slate-200"
+                                >
+                                    {`测试 ${selectedTool.name}`}
+                                </EllipsisTooltip>
                             </div>
                             <button
                                 onClick={closeTestPanel}

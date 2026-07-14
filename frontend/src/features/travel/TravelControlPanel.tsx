@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain, CheckCircle2, AlertTriangle, Plug, Save, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { toast } from 'sonner';
 import {
   fetchTravelSettings,
@@ -78,9 +79,9 @@ export function TravelControlPanel({
             {t('travel.panel.model')}
           </div>
           <p className="text-xs text-[var(--text-secondary)]">{t('travel.panel.modelHint')}</p>
-          <div className="text-sm font-mono px-3 py-2 rounded-lg bg-[var(--bg-hover)] truncate">
+          <EllipsisTooltip className="rounded-lg bg-[var(--bg-hover)] px-3 py-2 font-mono text-sm">
             {selectedModel || t('travel.panel.noModel')}
-          </div>
+          </EllipsisTooltip>
           <Button variant="outline" size="sm" className="w-full" onClick={onOpenModelSettings}>
             <Plug size={14} className="mr-2" />
             {t('travel.panel.openModelSettings')}
