@@ -9,6 +9,8 @@ from uuid import UUID
 
 import mimetypes
 
+import aiohttp
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
@@ -22,6 +24,11 @@ from app.spider.services.chat_persistence import (
     resolve_spider_session,
     save_spider_user_message,
     upsert_spider_assistant_message,
+)
+from app.spider.services.html_preview import (
+    collect_preview_image_urls,
+    is_safe_remote_url,
+    prepare_html_for_preview,
 )
 from app.spider.services.sandbox import initialize_session_sandbox, list_workspace_files
 from app.spider.services.spider_agent_service import spider_agent_stream
@@ -242,3 +249,94 @@ async def spider_workspace_file(
 
     media_type, _ = mimetypes.guess_type(safe_name)
     return Response(content=content, media_type=media_type or "application/octet-stream")
+
+
+def _read_source_page_url(workspace) -> str | None:
+    raw = workspace.read_text("source_page.meta.json")
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    url = data.get("url") if isinstance(data, dict) else None
+    return url.strip() if isinstance(url, str) and url.strip() else None
+
+
+async def _fetch_preview_asset(url: str, referer: str | None) -> tuple[bytes, str]:
+    if not is_safe_remote_url(url):
+        raise ValueError("unsafe url")
+    if referer and not is_safe_remote_url(referer):
+        referer = None
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15"
+        ),
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    }
+    if referer:
+        headers["Referer"] = referer
+
+    timeout = aiohttp.ClientTimeout(total=12)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(url, headers=headers) as response:
+            if response.status >= 400:
+                raise RuntimeError(f"asset fetch failed: {response.status}")
+            data = await response.read()
+            content_type = response.headers.get("Content-Type") or "application/octet-stream"
+            return data, content_type
+
+
+@router.get("/workspace/{session_id}/files/{filename}/html-preview")
+async def spider_workspace_html_preview(
+    session_id: UUID,
+    filename: str,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service=Depends(get_session_service),
+):
+    """Return HTML with remote images inlined so blob: previews bypass hotlink blocks."""
+    safe_name = _validate_workspace_filename(filename)
+    if not safe_name.lower().endswith((".html", ".htm")):
+        raise HTTPException(status_code=400, detail="Not an HTML file")
+
+    session = await session_service.get_session(session_id, user_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.session_type != SessionType.spider:
+        raise HTTPException(status_code=400, detail="Not a spider session")
+
+    try:
+        workspace = initialize_session_sandbox(str(user_id), str(session_id))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Docker sandbox unavailable: {exc}") from exc
+
+    if not workspace.exists(safe_name):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    html = workspace.read_text(safe_name)
+    if html is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    meta_url = _read_source_page_url(workspace)
+    resolved_base, image_urls = collect_preview_image_urls(html, meta_url)
+
+    async def _safe_fetch(url: str) -> tuple[str, tuple[bytes, str] | None]:
+        try:
+            return url, await _fetch_preview_asset(url, resolved_base)
+        except Exception:
+            return url, None
+
+    fetched = await asyncio.gather(*[_safe_fetch(url) for url in image_urls])
+    assets = {url: payload for url, payload in fetched if payload is not None}
+
+    def sync_fetch(url: str, referer: str | None) -> tuple[bytes, str]:
+        del referer
+        payload = assets.get(url)
+        if payload is None:
+            raise RuntimeError("asset unavailable")
+        return payload
+
+    rewritten = prepare_html_for_preview(html, base_url=meta_url, fetch_asset=sync_fetch)
+    return Response(content=rewritten.encode("utf-8"), media_type="text/html; charset=utf-8")

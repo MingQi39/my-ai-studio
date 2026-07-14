@@ -9,8 +9,10 @@ import { ConnectionModal } from './components/ConnectionModal';
 import { AuthPage } from './components/AuthPage';
 import { TravelPage } from './pages/TravelPage';
 import { FitnessPage } from './pages/FitnessPage';
+import { SpiderPage } from './pages/SpiderPage';
 import { branding } from './features/travel/config/branding';
 import { fitnessBranding } from './features/fitness/config/branding';
+import { spiderBranding } from './features/spider/config/branding';
 import { useSessionRoute } from './hooks/useSessionRoute';
 import { useIsMobile } from './components/ui/use-mobile';
 import { cn } from './components/ui/utils';
@@ -117,15 +119,24 @@ export default function App() {
 
   const isTravelRoute = location.pathname.startsWith('/travel');
   const isFitnessRoute = location.pathname.startsWith('/fitness');
-  const activeTab = isFitnessRoute ? 'fitness-agent' : isTravelRoute ? 'travel-agent' : 'history';
+  const isSpiderRoute = location.pathname.startsWith('/spider');
+  const activeTab = isSpiderRoute
+    ? 'spider-agent'
+    : isFitnessRoute
+      ? 'fitness-agent'
+      : isTravelRoute
+        ? 'travel-agent'
+        : 'history';
 
   useEffect(() => {
     document.title = isTravelRoute
       ? branding.documentTitle
       : isFitnessRoute
         ? fitnessBranding.documentTitle
-        : t('common.appName');
-  }, [t, i18n.language, isTravelRoute, isFitnessRoute]);
+        : isSpiderRoute
+          ? spiderBranding.documentTitle
+          : t('common.appName');
+  }, [t, i18n.language, isTravelRoute, isFitnessRoute, isSpiderRoute]);
 
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
@@ -378,6 +389,9 @@ export default function App() {
       setIsControlPanelOpen(true);
     } else if (tab === 'fitness-agent') {
       navigate('/fitness/chat');
+      setIsControlPanelOpen(true);
+    } else if (tab === 'spider-agent') {
+      navigate('/spider/chat');
       setIsControlPanelOpen(true);
     } else if (tab === 'history') {
       navigate('/');
@@ -642,6 +656,21 @@ export default function App() {
           path="/fitness/*"
           element={
             <FitnessPage
+              isDarkMode={isDarkMode}
+              isSidebarOpen={isSidebarOpen}
+              toggleSidebar={toggleSidebar}
+              selectedModel={selectedModel}
+              selectedModelConfigId={selectedModelConfigId}
+              isControlPanelOpen={isControlPanelOpen}
+              toggleControlPanel={toggleControlPanel}
+              onOpenModelSettings={() => openConnectionModal()}
+            />
+          }
+        />
+        <Route
+          path="/spider/*"
+          element={
+            <SpiderPage
               isDarkMode={isDarkMode}
               isSidebarOpen={isSidebarOpen}
               toggleSidebar={toggleSidebar}

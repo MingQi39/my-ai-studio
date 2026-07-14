@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MessageSquare, Settings, Moon, Sun, Sparkles, ChevronRight, LogOut, ChevronDown, Trash2, MapPin, ArrowLeft, Brain, Wrench, Plus, UtensilsCrossed } from 'lucide-react';
+import { MessageSquare, Settings, Moon, Sun, Sparkles, ChevronRight, LogOut, ChevronDown, Trash2, MapPin, ArrowLeft, Brain, Wrench, Plus, UtensilsCrossed, Bug, FolderOpen } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -21,11 +21,13 @@ import { User, SessionResponse, listSessions, deleteSession as apiDeleteSession 
 import { BrandLogo } from '@/components/BrandLogo';
 import { useChatStore } from '@/features/travel/stores/useChatStore';
 import { useFitnessChatStore } from '@/features/fitness/stores/useFitnessChatStore';
+import { useSpiderChatStore } from '@/features/spider/stores/useSpiderChatStore';
 import {
   listTravelSessions,
   removeTravelSession,
 } from '@/features/travel/services/api/sessions';
 import { listFitnessSessions, removeFitnessSession } from '@/features/fitness/services/api/sessions';
+import { listSpiderSessions, removeSpiderSession } from '@/features/spider/services/api/sessions';
 
 interface AppSidebarProps {
   activeTab: string;
@@ -61,25 +63,34 @@ export function AppSidebar({
   const fitnessSubTab = location.pathname.startsWith('/fitness/')
     ? location.pathname.replace(/^\/fitness\/?/, '').split('/')[0] || 'chat'
     : 'chat';
+  const spiderSubTab = location.pathname.startsWith('/spider/')
+    ? location.pathname.replace(/^\/spider\/?/, '').split('/')[0] || 'chat'
+    : 'chat';
   const [isHistoryOpen, setIsHistoryOpen] = useState(true);
   const [isTravelHistoryOpen, setIsTravelHistoryOpen] = useState(true);
   const [isFitnessHistoryOpen, setIsFitnessHistoryOpen] = useState(true);
+  const [isSpiderHistoryOpen, setIsSpiderHistoryOpen] = useState(true);
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [travelSessions, setTravelSessions] = useState<SessionResponse[]>([]);
   const [fitnessSessions, setFitnessSessions] = useState<SessionResponse[]>([]);
+  const [spiderSessions, setSpiderSessions] = useState<SessionResponse[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isLoadingTravelSessions, setIsLoadingTravelSessions] = useState(false);
   const [isLoadingFitnessSessions, setIsLoadingFitnessSessions] = useState(false);
+  const [isLoadingSpiderSessions, setIsLoadingSpiderSessions] = useState(false);
   const travelSessionId = useChatStore((state) => state.currentSessionId);
   const travelSessionListVersion = useChatStore((state) => state.sessionListVersion);
   const fitnessSessionId = useFitnessChatStore((state) => state.currentSessionId);
   const fitnessSessionListVersion = useFitnessChatStore((state) => state.sessionListVersion);
+  const spiderSessionId = useSpiderChatStore((state) => state.currentSessionId);
+  const spiderSessionListVersion = useSpiderChatStore((state) => state.sessionListVersion);
 
   // 确认对话框状态
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [sessionToDeleteIsTravel, setSessionToDeleteIsTravel] = useState(false);
   const [sessionToDeleteIsFitness, setSessionToDeleteIsFitness] = useState(false);
+  const [sessionToDeleteIsSpider, setSessionToDeleteIsSpider] = useState(false);
 
   // 加载会话列表
   const loadSessions = async () => {
@@ -118,9 +129,21 @@ export function AppSidebar({
     }
   };
 
+  const loadSpiderSessions = async () => {
+    try {
+      setIsLoadingSpiderSessions(true);
+      const items = await listSpiderSessions();
+      setSpiderSessions(items);
+    } catch (error) {
+      console.error('Failed to load spider sessions:', error);
+    } finally {
+      setIsLoadingSpiderSessions(false);
+    }
+  };
+
   // 当展开历史会话或触发器变化时加载
   useEffect(() => {
-    if (isHistoryOpen && activeTab !== 'travel-agent' && activeTab !== 'fitness-agent') {
+    if (isHistoryOpen && activeTab !== 'travel-agent' && activeTab !== 'fitness-agent' && activeTab !== 'spider-agent') {
       loadSessions();
     }
   }, [isHistoryOpen, sessionRefreshTrigger, activeTab]);
@@ -137,6 +160,12 @@ export function AppSidebar({
     }
   }, [activeTab, isFitnessHistoryOpen, sessionRefreshTrigger, fitnessSessionListVersion]);
 
+  useEffect(() => {
+    if (activeTab === 'spider-agent' && isSpiderHistoryOpen) {
+      loadSpiderSessions();
+    }
+  }, [activeTab, isSpiderHistoryOpen, sessionRefreshTrigger, spiderSessionListVersion]);
+
   const handleLogout = () => {
     if (onLogout) {
       onLogout();
@@ -149,11 +178,13 @@ export function AppSidebar({
     e: React.MouseEvent,
     isTravel = false,
     isFitness = false,
+    isSpider = false,
   ) => {
     e.stopPropagation();
     setSessionToDelete(sessionId);
     setSessionToDeleteIsTravel(isTravel);
     setSessionToDeleteIsFitness(isFitness);
+    setSessionToDeleteIsSpider(isSpider);
     setIsDeleteDialogOpen(true);
   };
 
@@ -177,6 +208,16 @@ export function AppSidebar({
     navigate('/fitness/chat');
   };
 
+  const handleSelectSpiderSession = (sessionId: string) => {
+    navigate(`/spider/chat/${sessionId}`);
+  };
+
+  const handleNewSpiderSession = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    useSpiderChatStore.getState().startNewSession();
+    navigate('/spider/chat');
+  };
+
   const confirmDeleteSession = async () => {
     if (!sessionToDelete) return;
 
@@ -196,6 +237,14 @@ export function AppSidebar({
           useFitnessChatStore.getState().startNewSession();
           navigate('/fitness/chat');
         }
+      } else if (sessionToDeleteIsSpider) {
+        await removeSpiderSession(sessionToDelete);
+        setSpiderSessions(prev => prev.filter(s => s.id !== sessionToDelete));
+        useSpiderChatStore.getState().bumpSessionList();
+        if (spiderSessionId === sessionToDelete) {
+          useSpiderChatStore.getState().startNewSession();
+          navigate('/spider/chat');
+        }
       } else {
         await apiDeleteSession(sessionToDelete);
         setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
@@ -214,6 +263,7 @@ export function AppSidebar({
       setSessionToDelete(null);
       setSessionToDeleteIsTravel(false);
       setSessionToDeleteIsFitness(false);
+      setSessionToDeleteIsSpider(false);
     }
   };
 
@@ -428,6 +478,95 @@ export function AppSidebar({
                 </CollapsibleContent>
               </Collapsible>
             </>
+          ) : activeTab === 'spider-agent' ? (
+            <>
+              <button
+                onClick={() => navigate('/')}
+                className="flex items-center gap-2 px-3 h-[36px] rounded-lg text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors mb-2"
+              >
+                <ArrowLeft size={16} />
+                {t('spider.sidebar.backToWorkspace')}
+              </button>
+
+              <p className="px-3 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                {t('sidebar.spiderAgent')}
+              </p>
+
+              <NavButton
+                icon={<Plus size={20} />}
+                label={t('spider.sidebar.newChat')}
+                id="spider-new-chat"
+                isActive={spiderSubTab === 'chat' && !spiderSessionId}
+                onClick={() => handleNewSpiderSession()}
+              />
+
+              <NavButton
+                icon={<FolderOpen size={20} />}
+                label={t('spider.sidebar.files')}
+                id="spider-files"
+                isActive={spiderSubTab === 'files'}
+                onClick={() => {
+                  const id = useSpiderChatStore.getState().currentSessionId;
+                  navigate(id ? `/spider/files/${id}` : '/spider/files');
+                }}
+              />
+
+              <Collapsible open={isSpiderHistoryOpen} onOpenChange={setIsSpiderHistoryOpen} className="mt-1">
+                <div className="flex items-center justify-between px-3 mb-1">
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = useSpiderChatStore.getState().currentSessionId;
+                        navigate(id ? `/spider/chat/${id}` : '/spider/chat');
+                      }}
+                      className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                        spiderSubTab === 'chat' && spiderSessionId
+                          ? 'text-blue-500'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <ChevronDown
+                        size={12}
+                        className={`transition-transform duration-200 ${isSpiderHistoryOpen ? 'rotate-180' : ''}`}
+                      />
+                      {t('spider.sidebar.history')}
+                    </button>
+                  </CollapsibleTrigger>
+                  <button
+                    type="button"
+                    onClick={handleNewSpiderSession}
+                    className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    title={t('spider.sidebar.newChat')}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+
+                <CollapsibleContent>
+                  <div className="pl-2 space-y-0.5 min-w-0">
+                    {isLoadingSpiderSessions ? (
+                      <div className="py-4 text-center text-xs text-[var(--text-secondary)]">{t('common.loading')}</div>
+                    ) : spiderSessions.length === 0 ? (
+                      <div className="py-4 text-center text-xs text-[var(--text-secondary)]">{t('spider.sidebar.noSessions')}</div>
+                    ) : (
+                      spiderSessions
+                        .slice(0, 20)
+                        .map((session) => (
+                          <AgentSessionHistoryRow
+                            key={session.id}
+                            session={session}
+                            isActive={spiderSessionId === session.id}
+                            formatDate={formatDate}
+                            onSelect={() => handleSelectSpiderSession(session.id)}
+                            onDelete={(e) => handleDeleteSession(session.id, e, false, false, true)}
+                          />
+                        ))
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </>
           ) : (
             <>
               {/* 历史会话 - 可折叠 */}
@@ -496,6 +635,14 @@ export function AppSidebar({
                 id="fitness-agent"
                 isActive={activeTab === 'fitness-agent'}
                 onClick={() => onTabChange('fitness-agent')}
+                hasBadge
+              />
+              <NavButton
+                icon={<Bug size={20} />}
+                label={t('sidebar.spiderAgent')}
+                id="spider-agent"
+                isActive={activeTab === 'spider-agent'}
+                onClick={() => onTabChange('spider-agent')}
                 hasBadge
               />
             </>

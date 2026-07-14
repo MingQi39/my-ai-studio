@@ -45,16 +45,15 @@ export function QueuedChatInput<T>({
     const payload = getPayload(value);
     if (payload == null) return;
 
+    // Clear immediately — send handlers often await long-running streams.
+    onChange('');
+
     if (shouldBypassQueue?.(payload)) {
-      void Promise.resolve(onSendPayload(payload)).then(() => onChange(''));
+      void Promise.resolve(onSendPayload(payload));
       return;
     }
 
-    void submit(payload).then((result) => {
-      if (result === 'sent' || result === 'queued') {
-        onChange('');
-      }
-    });
+    void submit(payload);
   };
 
   const handleEditQueued = (id: string, payload: T) => {

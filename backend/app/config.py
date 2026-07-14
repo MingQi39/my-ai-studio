@@ -70,6 +70,12 @@ class Settings(BaseSettings):
     FITNESS_DEFAULT_TIMEZONE: str = "Asia/Shanghai"
     FITNESS_DEFAULT_CALORIE_GOAL: int = 1800
 
+    # Spider Agent (DeepAgents) — session artifacts live in Docker named volumes
+    SPIDER_CONTAINER_MOUNT_PATH: str = "/workspace"
+    SPIDER_DOCKER_IMAGE: str = "python:3.11-slim"
+    SPIDER_DOCKER_MEMORY_LIMIT: str = "1g"
+    SPIDER_DOCKER_CPU_QUOTA: int = 100000
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def validate_cors_origins(cls, v: str | list[str]) -> str:

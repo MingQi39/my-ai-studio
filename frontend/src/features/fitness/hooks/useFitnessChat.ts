@@ -26,7 +26,6 @@ const SUMMARY_MUTATING_TOOLS = new Set([
   'delete_diary_entry',
 ]);
 const PROGRESS_SLOW_NOTICE_MS = 6000;
-const PROGRESS_DOTS_INTERVAL_MS = 1200;
 
 type SendMessageOptions = {
   agentMessage?: string;
@@ -109,15 +108,15 @@ export function useFitnessChat() {
 
     const syncAssistant = (patch: {
       content?: string;
+      statusLabel?: string;
       isThinking?: boolean;
       toolRuns?: ChatToolRun[];
     }) => {
       updateMessage(assistantMessageId, patch);
     };
     let progressTimeout: ReturnType<typeof setTimeout> | null = null;
-    let progressDotsInterval: ReturnType<typeof setInterval> | null = null;
     let currentWorkingText = '';
-    let currentDots = '';
+    let showSlowNotice = false;
 
     const clearProgressTimeout = () => {
       if (progressTimeout) {
@@ -125,44 +124,25 @@ export function useFitnessChat() {
         progressTimeout = null;
       }
     };
-    const clearProgressDots = () => {
-      if (progressDotsInterval) {
-        clearInterval(progressDotsInterval);
-        progressDotsInterval = null;
-      }
-      currentWorkingText = '';
-      currentDots = '';
-    };
-    const startProgressDots = (text: string) => {
-      clearProgressDots();
-      currentWorkingText = text;
-      const dotFrames = ['.', '..', '...'];
-      let frame = 0;
-      progressDotsInterval = setInterval(() => {
-        currentDots = dotFrames[frame];
-        frame = (frame + 1) % dotFrames.length;
-        syncAssistant({
-          content: `${currentWorkingText}${currentDots}`,
-          isThinking: true,
-          toolRuns: [...toolRuns],
-        });
-      }, PROGRESS_DOTS_INTERVAL_MS);
-    };
 
-    const setWorkingStatus = (text: string) => {
+    const syncWorkingStatus = () => {
+      const suffix = showSlowNotice ? ` ${t('fitness.chat.progress.slow')}` : '';
       syncAssistant({
-        content: text,
+        content: '',
+        statusLabel: `${currentWorkingText}${suffix}`,
         isThinking: true,
         toolRuns: [...toolRuns],
       });
-      startProgressDots(text);
+    };
+
+    const setWorkingStatus = (text: string) => {
+      currentWorkingText = text;
+      showSlowNotice = false;
+      syncWorkingStatus();
       clearProgressTimeout();
       progressTimeout = setTimeout(() => {
-        syncAssistant({
-          content: `${text}${currentDots} ${t('fitness.chat.progress.slow')}`,
-          isThinking: true,
-          toolRuns: [...toolRuns],
-        });
+        showSlowNotice = true;
+        syncWorkingStatus();
       }, PROGRESS_SLOW_NOTICE_MS);
     };
 
@@ -248,6 +228,7 @@ export function useFitnessChat() {
             assistantMessageId,
           });
           syncAssistant({
+            statusLabel: undefined,
             isThinking: false,
             toolRuns: [...toolRuns],
           });
@@ -291,10 +272,11 @@ export function useFitnessChat() {
 
         if (event.type === 'chunk' && event.content) {
           clearProgressTimeout();
-          clearProgressDots();
+          showSlowNotice = false;
           contentBuffer += event.content;
           syncAssistant({
             content: contentBuffer,
+            statusLabel: undefined,
             isThinking: true,
             toolRuns: [...toolRuns],
           });
@@ -302,10 +284,11 @@ export function useFitnessChat() {
 
         if (event.type === 'final_response' && event.content) {
           clearProgressTimeout();
-          clearProgressDots();
+          showSlowNotice = false;
           contentBuffer = event.content;
           syncAssistant({
             content: contentBuffer,
+            statusLabel: undefined,
             isThinking: false,
             toolRuns: [...toolRuns],
           });
@@ -321,13 +304,14 @@ export function useFitnessChat() {
 
         if (event.type === 'done') {
           clearProgressTimeout();
-          clearProgressDots();
+          showSlowNotice = false;
           hasDoneEvent = true;
           if (!contentBuffer && !useFitnessChatStore.getState().pendingApproval) {
             contentBuffer = t('fitness.chat.emptyReply');
           }
           syncAssistant({
             content: contentBuffer,
+            statusLabel: undefined,
             isThinking: false,
             toolRuns: [...toolRuns],
           });
@@ -336,11 +320,12 @@ export function useFitnessChat() {
 
         if (event.type === 'error') {
           clearProgressTimeout();
-          clearProgressDots();
+          showSlowNotice = false;
           const msg = event.message || t('fitness.chat.requestFailed');
           toast.error(msg);
           syncAssistant({
             content: `❌ ${msg}`,
+            statusLabel: undefined,
             isThinking: false,
             toolRuns: [...toolRuns],
           });
@@ -349,10 +334,11 @@ export function useFitnessChat() {
       },
       onError: (error) => {
         clearProgressTimeout();
-        clearProgressDots();
+        showSlowNotice = false;
         toast.error(error.message || t('fitness.chat.requestFailed'));
         syncAssistant({
           content: `❌ ${error.message}`,
+          statusLabel: undefined,
           isThinking: false,
           toolRuns: [...toolRuns],
         });
@@ -360,10 +346,11 @@ export function useFitnessChat() {
       },
       onComplete: () => {
         clearProgressTimeout();
-        clearProgressDots();
+        showSlowNotice = false;
         if (!hasDoneEvent) {
           syncAssistant({
             content: t('fitness.chat.streamInterrupted'),
+            statusLabel: undefined,
             isThinking: false,
             toolRuns: [...toolRuns],
           });
@@ -377,7 +364,6 @@ export function useFitnessChat() {
       await client.start();
     } finally {
       clearProgressTimeout();
-      clearProgressDots();
       currentClientRef.current = null;
     }
   };
@@ -463,6 +449,7 @@ export function useFitnessChat() {
           : t('chat.generationStopped');
       updateMessage(lastAssistant.id, {
         content,
+        statusLabel: undefined,
         isThinking: false,
       });
     }

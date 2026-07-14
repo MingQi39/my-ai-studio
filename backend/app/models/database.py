@@ -48,6 +48,7 @@ class SessionType(str, enum.Enum):
     chat = "chat"
     travel = "travel"
     fitness = "fitness"
+    spider = "spider"
 
 
 class FitnessMealType(str, enum.Enum):

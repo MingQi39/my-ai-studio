@@ -50,7 +50,7 @@ export function GeneratingIndicator({
     return (
       <div className={cn('flex items-center gap-2 text-[var(--text-secondary)]', className)}>
         <Loader2 size={16} className="animate-spin" />
-        {label && <span className="text-sm">{label}</span>}
+        {label && <span className="text-sm leading-relaxed break-words">{label}</span>}
       </div>
     );
   }

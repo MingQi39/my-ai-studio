@@ -78,6 +78,7 @@ logs/
 # Storage (keep directory structure)
 storage/uploads/*
 storage/cache/*
+storage/spider/*
 !storage/uploads/.gitkeep
 !storage/cache/.gitkeep
 

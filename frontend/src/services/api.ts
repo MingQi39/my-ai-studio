@@ -391,7 +391,7 @@ export interface ChatToolsConfig {
 export interface SessionCreate {
   title?: string;
   description?: string;
-  session_type?: 'chat' | 'travel' | 'fitness';
+  session_type?: 'chat' | 'travel' | 'fitness' | 'spider';
 }
 
 // 会话更新请求
@@ -406,7 +406,7 @@ export interface SessionResponse {
   id: string;
   title: string;
   description: string | null;
-  session_type?: 'chat' | 'travel' | 'fitness';
+  session_type?: 'chat' | 'travel' | 'fitness' | 'spider';
   is_archived: boolean;
   created_at: string;
   updated_at: string;
@@ -482,7 +482,7 @@ export async function listSessions(
   page: number = 1,
   pageSize: number = 20,
   includeArchived: boolean = false,
-  sessionType: 'chat' | 'travel' | 'fitness' | 'all' = 'chat',
+  sessionType: 'chat' | 'travel' | 'fitness' | 'spider' | 'all' = 'chat',
 ): Promise<PaginatedResponse<SessionResponse>> {
   const params = new URLSearchParams();
   params.append('page', page.toString());

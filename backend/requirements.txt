@@ -81,3 +81,8 @@ langchain
 langchain-core
 langchain-openai
 langchain-community
+deepagents
+docker
+aiohttp
+beautifulsoup4
+lxml
