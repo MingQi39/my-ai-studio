@@ -89,6 +89,7 @@ export function mapStoredMessageToChat(msg: MessageResponse): StudioChatMessage 
     id: msg.id,
     role: role as 'user' | 'assistant',
     content: failure ? '' : msg.content,
+    isComplete: msg.is_complete !== false,
     ...(toolRuns ? { toolRuns } : {}),
     ...(todos.length > 0 ? { todos } : {}),
     ...(failure ? { failure } : {}),
