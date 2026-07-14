@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Plus, Trash2, Star, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EllipsisTooltip } from '@/components/EllipsisTooltip';
 import { cn } from '@/components/ui/utils';
 import { toast } from 'sonner';
 import {
