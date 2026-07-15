@@ -584,6 +584,8 @@
       "error": "爬虫任务执行失败",
       "streamError": "连接中断，请检查后端、Docker 与模型配置",
       "restoreInterrupted": "页面刷新中断了实时进度。右侧工作区文件会自动同步；后端任务若仍在跑，稍候即可看到新产出。",
+      "resumeAvailable": "上次任务未完成。可从断点继续，已完成的步骤会自动跳过。",
+      "resumeTask": "继续任务",
       "modelRequired": "请先在设置中配置模型连接",
       "progress": {
         "slow": "（步骤耗时较长，继续处理中…）"

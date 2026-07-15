@@ -20,7 +20,9 @@ from app.dependencies import get_current_user_auth, get_db, get_model_service, g
 from app.models.database import SessionType
 from app.spider.schemas import SpiderAgentRequest, SpiderWorkspaceFile, SpiderWorkspaceResponse
 from app.spider.services.chat_persistence import (
+    find_resumable_assistant_message,
     messages_to_history,
+    parse_spider_meta,
     resolve_spider_session,
     save_spider_user_message,
     upsert_spider_assistant_message,
@@ -46,6 +48,7 @@ from app.spider.services.stream_checkpoint import (
     has_persistable_snapshot,
     ordered_tool_trace,
     resolve_persist_content,
+    seed_prior_snapshot,
 )
 from app.travel.llm_context import resolve_travel_llm
 
@@ -75,9 +78,13 @@ async def _persist_spider_stream(
     stream: AsyncIterator[dict[str, Any]],
     session_service,
     session_id: UUID,
+    *,
+    assistant_message_id: UUID | None = None,
+    seed_tool_trace: list[dict[str, Any]] | None = None,
+    seed_todos: list[dict[str, str]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     state = SpiderCheckpointState()
-    assistant_message_id: UUID | None = None
+    seed_prior_snapshot(state, tool_trace=seed_tool_trace, todos=seed_todos)
     last_flush_at = 0.0
     chars_since_flush = 0
     finalized = False
@@ -163,12 +170,36 @@ async def spider_agent_run(
     stored_messages = await session_service.get_messages(session_id)
     conversation_history = messages_to_history(stored_messages)
 
-    await save_spider_user_message(
-        session_service=session_service,
-        session_id=session_id,
-        content=request.message,
-        target_url=request.target_url,
+    runtime = choose_spider_runtime(request.message, request.target_url)
+    # Resume is a pipeline-only capability (deepagent has no fixed stages to skip)
+    # and only kicks in when there is an actual interrupted/failed message to
+    # continue; otherwise it degrades to a normal fresh run.
+    resume_message_id = (
+        find_resumable_assistant_message(stored_messages)
+        if bool(request.resume) and runtime == "pipeline"
+        else None
     )
+    resume = resume_message_id is not None
+    seed_tool_trace: list[dict[str, Any]] | None = None
+    seed_todos: list[dict[str, str]] | None = None
+    if resume:
+        prior = next((m for m in stored_messages if str(m.id) == str(resume_message_id)), None)
+        meta = parse_spider_meta(prior.tool_calls) if prior is not None else None
+        if meta:
+            trace = meta.get("tool_trace")
+            todos = meta.get("todos")
+            seed_tool_trace = trace if isinstance(trace, list) else None
+            seed_todos = todos if isinstance(todos, list) else None
+
+    # On resume we continue the original task's assistant message; adding a new
+    # user message would duplicate the request bubble.
+    if not resume:
+        await save_spider_user_message(
+            session_service=session_service,
+            session_id=session_id,
+            content=request.message,
+            target_url=request.target_url,
+        )
 
     ctx = await resolve_travel_llm(model_service, user_id, request.model_config_id)
 
@@ -176,19 +207,37 @@ async def spider_agent_run(
         set_request_cookies(normalized_cookies)
         try:
             yield {"type": "session", "session_id": str(session_id), "created": created}
-            runtime = choose_spider_runtime(request.message, request.target_url)
-            stream_fn = spider_pipeline_stream if runtime == "pipeline" else spider_agent_stream
-            inner = stream_fn(
-                message=request.message,
-                conversation_history=conversation_history,
-                user_id=str(user_id),
-                session_id=str(session_id),
-                llm_api_key=ctx.api_key,
-                llm_base_url=ctx.base_url,
-                model_name=ctx.model_id,
-                target_url=request.target_url,
-            )
-            async for event in _persist_spider_stream(inner, session_service, session_id):
+            if runtime == "pipeline":
+                inner = spider_pipeline_stream(
+                    message=request.message,
+                    conversation_history=conversation_history,
+                    user_id=str(user_id),
+                    session_id=str(session_id),
+                    llm_api_key=ctx.api_key,
+                    llm_base_url=ctx.base_url,
+                    model_name=ctx.model_id,
+                    target_url=request.target_url,
+                    resume=resume,
+                )
+            else:
+                inner = spider_agent_stream(
+                    message=request.message,
+                    conversation_history=conversation_history,
+                    user_id=str(user_id),
+                    session_id=str(session_id),
+                    llm_api_key=ctx.api_key,
+                    llm_base_url=ctx.base_url,
+                    model_name=ctx.model_id,
+                    target_url=request.target_url,
+                )
+            async for event in _persist_spider_stream(
+                inner,
+                session_service,
+                session_id,
+                assistant_message_id=resume_message_id,
+                seed_tool_trace=seed_tool_trace,
+                seed_todos=seed_todos,
+            ):
                 yield event
         finally:
             clear_request_cookies()

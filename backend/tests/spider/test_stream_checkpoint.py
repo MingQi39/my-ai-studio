@@ -4,6 +4,7 @@ from app.spider.services.stream_checkpoint import (
     has_persistable_snapshot,
     ordered_tool_trace,
     resolve_persist_content,
+    seed_prior_snapshot,
 )
 
 
@@ -140,3 +141,24 @@ def test_resolve_content_complete_error_fallback():
 
 def test_empty_state_not_persistable():
     assert has_persistable_snapshot(SpiderCheckpointState()) is False
+
+
+def test_seed_prior_snapshot_keeps_success_and_new_cards_in_order():
+    state = SpiderCheckpointState()
+    seed_prior_snapshot(
+        state,
+        tool_trace=[
+            {"id": "old-1", "tool_name": "web_analyzer", "status": "success", "result": "ok"},
+            {"id": "old-2", "tool_name": "code_generator", "status": "success", "result": "ok"},
+            # The interrupted/failed stage must NOT be seeded (it gets re-run).
+            {"id": "old-3", "tool_name": "debug_agent", "status": "pending"},
+        ],
+        todos=[{"content": "分析", "status": "completed"}],
+    )
+    apply_persist_event(
+        state,
+        {"type": "tool_call_start", "call_id": "new-1", "tool_name": "debug_agent", "tool_args": {}},
+    )
+    ids = [entry["id"] for entry in ordered_tool_trace(state)]
+    assert ids == ["old-1", "old-2", "new-1"]
+    assert state.latest_todos == [{"content": "分析", "status": "completed"}]

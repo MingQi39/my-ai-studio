@@ -40,6 +40,28 @@ def parse_spider_meta(tool_calls: list[dict[str, Any]] | None) -> dict[str, Any]
     return None
 
 
+def _role_value(role: Any) -> str:
+    return role.value if hasattr(role, "value") else str(role)
+
+
+def find_resumable_assistant_message(messages: list[Any]) -> UUID | None:
+    """Latest assistant message that can be resumed.
+
+    A pipeline run is resumable when it was interrupted mid-flight
+    (``is_complete is False``) or ended in a structured failure (``spider_meta``
+    carries a ``failure``). Newest such message wins.
+    """
+    assistant = [m for m in messages if _role_value(m.role) == "assistant"]
+    assistant.sort(key=lambda m: m.created_at, reverse=True)
+    for message in assistant:
+        if getattr(message, "is_complete", True) is False:
+            return UUID(str(message.id))
+        meta = parse_spider_meta(message.tool_calls)
+        if meta and meta.get("failure"):
+            return UUID(str(message.id))
+    return None
+
+
 def messages_to_history(messages: list[Any]) -> list[dict[str, str]]:
     sorted_messages = sorted(messages, key=lambda message: message.created_at)
     history: list[dict[str, str]] = []

@@ -16,6 +16,7 @@ import { useSpiderSessionRestore } from '@/features/spider/hooks/useSpiderSessio
 import { useSpiderSessionRoute } from '@/features/spider/hooks/useSpiderSessionRoute';
 import { useSpiderWorkspace } from '@/features/spider/hooks/useSpiderWorkspace';
 import { useSpiderChatStore } from '@/features/spider/stores/useSpiderChatStore';
+import { findResumableMessage } from '@/features/spider/utils/resumableMessage';
 
 export function SpiderChatView({
   isDarkMode,
@@ -47,8 +48,16 @@ export function SpiderChatView({
   useSpiderSessionRestore();
   const { refreshWorkspace } = useSpiderWorkspace();
 
-  const { sendMessage, cancelCurrentRequest } = useSpiderChat();
+  const { sendMessage, resumeTask, cancelCurrentRequest } = useSpiderChat();
   const [inputValue, setInputValue] = useState('');
+  const [resumeDismissed, setResumeDismissed] = useState(false);
+
+  useEffect(() => {
+    setResumeDismissed(false);
+  }, [currentSessionId]);
+
+  const resumableMessage = useMemo(() => findResumableMessage(messages), [messages]);
+  const canResume = Boolean(resumableMessage) && !isGenerating && !resumeDismissed;
 
   const { scrollContainerRef, scrollSentinelRef, showJumpButton, scrollToBottom } = useChatAutoScroll({
     deps: [messages, isViewingLiveRun],
@@ -70,6 +79,16 @@ export function SpiderChatView({
     if (!text || isGenerating) return;
     try {
       await sendMessage(text);
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : t('spider.chat.streamError'));
+    }
+  };
+
+  const handleResume = async () => {
+    if (isGenerating) return;
+    try {
+      await resumeTask();
     } catch (error) {
       console.error(error);
       toast.error(error instanceof Error ? error.message : t('spider.chat.streamError'));
@@ -145,19 +164,36 @@ export function SpiderChatView({
         </details>
       </div>
 
-      {restoreInterruptedHint ? (
+      {canResume ? (
         <div className="flex items-start justify-between gap-3 border-b border-sky-500/20 bg-sky-500/10 px-3 py-2 sm:px-4">
           <div className="flex min-w-0 items-start gap-2 text-xs text-sky-800 dark:text-sky-200">
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <span className="min-w-0 flex-1 break-words">{t('spider.chat.restoreInterrupted')}</span>
+            <span className="min-w-0 flex-1 break-words">
+              {restoreInterruptedHint
+                ? t('spider.chat.restoreInterrupted')
+                : t('spider.chat.resumeAvailable')}
+            </span>
           </div>
-          <button
-            type="button"
-            className="shrink-0 text-[11px] font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-200"
-            onClick={() => setRestoreInterruptedHint(false)}
-          >
-            {t('common.dismiss', { defaultValue: '知道了' })}
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              type="button"
+              className="shrink-0 rounded-md bg-sky-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+              onClick={handleResume}
+              disabled={isGenerating}
+            >
+              {t('spider.chat.resumeTask')}
+            </button>
+            <button
+              type="button"
+              className="shrink-0 text-[11px] font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-200"
+              onClick={() => {
+                setRestoreInterruptedHint(false);
+                setResumeDismissed(true);
+              }}
+            >
+              {t('common.dismiss', { defaultValue: '知道了' })}
+            </button>
+          </div>
         </div>
       ) : null}
 

@@ -24,6 +24,35 @@ def ordered_tool_trace(state: SpiderCheckpointState) -> list[dict[str, Any]]:
     return [state.pending[call_id] for call_id in state.order if call_id in state.pending]
 
 
+def seed_prior_snapshot(
+    state: SpiderCheckpointState,
+    *,
+    tool_trace: list[dict[str, Any]] | None = None,
+    todos: list[dict[str, str]] | None = None,
+) -> None:
+    """Pre-load a resumed message's already-persisted stage cards.
+
+    Resume continues the same assistant message, but persistence rewrites the
+    whole ``tool_calls`` blob, so a fresh state would drop the stages that
+    finished before the interruption. Only *successful* cards are seeded: the
+    interrupted/failed stage is re-run and will emit its own fresh card, so
+    seeding it too would duplicate it.
+    """
+    if tool_trace:
+        for entry in tool_trace:
+            call_id = str(entry.get("id") or "")
+            if not call_id or call_id in state.pending:
+                continue
+            if entry.get("status") != "success":
+                continue
+            state.order.append(call_id)
+            state.pending[call_id] = dict(entry)
+    if todos:
+        normalized = normalize_todos(todos)
+        if normalized:
+            state.latest_todos = normalized
+
+
 def has_persistable_snapshot(state: SpiderCheckpointState) -> bool:
     return bool(
         state.content_buffer

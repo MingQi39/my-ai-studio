@@ -21,6 +21,11 @@ from app.spider.services.sandbox import (
     list_workspace_files,
 )
 from app.spider.services.sandbox_workspace import SandboxWorkspace
+from app.spider.services.stage_resume import (
+    PIPELINE_STAGE_COUNT,
+    probe_stage_completion,
+    resume_from_index,
+)
 from app.spider.services.target_url import try_resolve_spider_target_url
 from app.spider.services.todo_events import build_todos_updated_event, pipeline_todo_snapshot
 from app.spider.services.anti_scrape import classify_fetch_result, hints_for_error_code
@@ -846,6 +851,51 @@ async def _execute_spider_with_retry(
     return exec_result, source
 
 
+def _reconstruct_pipeline_context(workspace: SandboxWorkspace) -> dict[str, Any]:
+    """Rebuild the in-memory state a skipped Stage 1 would have produced.
+
+    Reads ``analysis_report.json`` (written at the end of web_analyzer) so a
+    resumed run can enter Stage 2+ without re-fetching or re-analyzing.
+    """
+    raw = workspace.read_text("analysis_report.json") or "{}"
+    try:
+        report = json.loads(raw)
+    except (TypeError, ValueError):
+        report = {}
+    if not isinstance(report, dict):
+        report = {}
+    analysis = report.get("analysis")
+    if not isinstance(analysis, (str, dict)):
+        analysis = ""
+    anti = report.get("anti_scraping")
+    if not isinstance(anti, dict):
+        anti = {}
+    scrape_engine = report.get("scrape_engine")
+    if scrape_engine not in {"requests", "playwright"}:
+        scrape_engine = "requests"
+    fetch_mode = report.get("fetch_mode") if report.get("fetch_mode") in {"http", "playwright"} else "http"
+    escalation_reason = report.get("escalation_reason")
+    # The URL actually fetched last time is authoritative for a resume: reused
+    # artifacts belong to it, so we must not adopt an edited target_url here.
+    resolved_url = None
+    meta_raw = workspace.read_text("source_page.meta.json")
+    if meta_raw:
+        try:
+            meta = json.loads(meta_raw)
+            if isinstance(meta, dict) and isinstance(meta.get("url"), str):
+                resolved_url = meta["url"]
+        except (TypeError, ValueError):
+            resolved_url = None
+    return {
+        "analysis": analysis,
+        "anti": anti,
+        "scrape_engine": scrape_engine,
+        "fetch_mode": fetch_mode,
+        "escalation_reason": escalation_reason if isinstance(escalation_reason, str) else None,
+        "resolved_url": resolved_url,
+    }
+
+
 async def spider_pipeline_stream(
     *,
     message: str,
@@ -856,6 +906,7 @@ async def spider_pipeline_stream(
     llm_base_url: str,
     model_name: str,
     target_url: str | None = None,
+    resume: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
     del conversation_history
     yield {"type": "start", "source": "agent"}
@@ -900,226 +951,83 @@ async def spider_pipeline_stream(
 
     execute_in_sandbox = create_execute_in_sandbox_tool(workspace)
 
-    # Stage 1: web_analyzer
-    yield _todos_event(active_index=0)
-    stage_events = await _emit_stage_start("web_analyzer", f"分析 {resolved_url}")
-    call_id = stage_events[0]["call_id"]
-    for event in stage_events:
-        yield event
-
-    fetch_result = await fetch_url.ainvoke({"url": resolved_url})
-    html_for_classify = str(fetch_result.get("html_content") or "")
-    anti = classify_fetch_result(
-        url=resolved_url,
-        html=html_for_classify,
-        status_code=fetch_result.get("status_code") if fetch_result.get("success") else (
-            fetch_result.get("status_code") or 0
-        ),
-    )
-    mode = decide_initial_fetch_mode(
-        anti,
-        http_success=bool(fetch_result.get("success")),
-        cookies_configured=request_cookies_configured(),
-    )
-    fetch_mode = "http"
-    scrape_engine = "requests"
-    escalation_reason: str | None = None
-    already_escalated = False
-
-    if mode == "block_hard":
-        yield _todos_event(completed_through=-1, failed_index=0)
-        yield _error_event(
-            code="anti_scrape_hard",
-            title="目标站启用了验证码/人机校验",
-            detail=str(anti.get("recommendations") or anti.get("detected_mechanisms") or "hard anti-scrape"),
-            hints=hints_for_error_code("anti_scrape_hard", cookies_configured=request_cookies_configured()),
-            stage="web_analyzer",
-            recoverable=False,
+    resume_from = 0
+    if resume:
+        resume_from = min(
+            resume_from_index(probe_stage_completion(workspace)),
+            PIPELINE_STAGE_COUNT - 1,
         )
-        yield {"type": "done", "source": "agent"}
-        return
 
-    if mode == "playwright":
-        if anti.get("escalate_to_browser"):
-            escalation_reason = "classify_escalate"
-        elif anti.get("block_hard") and request_cookies_configured():
-            escalation_reason = "cookie_hard_retry"
-        else:
-            escalation_reason = "http_fetch_failed"
-        if not probe_playwright_available(workspace):
-            yield _todos_event(completed_through=-1, failed_index=0)
-            yield _error_event(
-                code="browser_image_unavailable",
-                title="需要浏览器抓取，但沙箱镜像未提供 Playwright",
-                detail=str(fetch_result.get("error") or "HTTP 抓取不足，需升级 Playwright"),
-                hints=hints_for_error_code("browser_image_unavailable"),
-                stage="web_analyzer",
-                recoverable=False,
-            )
-            yield {"type": "done", "source": "agent"}
-            return
+    code_source = "resumed"
+    exec_source = "resumed"
 
-        pw = run_playwright_fetch(workspace, resolved_url)
-        if not pw.get("success"):
-            code = "fetch_failed" if not fetch_result.get("success") else "browser_fetch_failed"
-            yield _todos_event(completed_through=-1, failed_index=0)
-            yield _error_event(
-                code=code,
-                title="网页抓取失败",
-                detail=str(pw.get("error") or fetch_result.get("error") or "browser fetch failed"),
-                hints=hints_for_error_code(code),
-                stage="web_analyzer",
-                recoverable=False,
-            )
-            yield {"type": "done", "source": "agent"}
-            return
+    if resume_from >= 1:
+        _ctx = _reconstruct_pipeline_context(workspace)
+        analysis = _ctx["analysis"]
+        anti = _ctx["anti"]
+        scrape_engine = _ctx["scrape_engine"]
+        fetch_mode = _ctx["fetch_mode"]
+        escalation_reason = _ctx["escalation_reason"]
+        already_escalated = scrape_engine == "playwright"
+        if _ctx.get("resolved_url"):
+            resolved_url = _ctx["resolved_url"]
+        yield _todos_event(completed_through=resume_from - 1, active_index=resume_from)
 
-        already_escalated = True
-        fetch_mode = "playwright"
-        scrape_engine = "playwright"
+    if resume_from == 0:
+        # Stage 1: web_analyzer
+        yield _todos_event(active_index=0)
+        stage_events = await _emit_stage_start("web_analyzer", f"分析 {resolved_url}")
+        call_id = stage_events[0]["call_id"]
+        for event in stage_events:
+            yield event
+
+        fetch_result = await fetch_url.ainvoke({"url": resolved_url})
+        html_for_classify = str(fetch_result.get("html_content") or "")
         anti = classify_fetch_result(
             url=resolved_url,
-            html=str(pw.get("html_content") or ""),
-            status_code=200,
+            html=html_for_classify,
+            status_code=fetch_result.get("status_code") if fetch_result.get("success") else (
+                fetch_result.get("status_code") or 0
+            ),
         )
-        if anti.get("block_hard"):
+        mode = decide_initial_fetch_mode(
+            anti,
+            http_success=bool(fetch_result.get("success")),
+            cookies_configured=request_cookies_configured(),
+        )
+        fetch_mode = "http"
+        scrape_engine = "requests"
+        escalation_reason: str | None = None
+        already_escalated = False
+
+        if mode == "block_hard":
             yield _todos_event(completed_through=-1, failed_index=0)
             yield _error_event(
                 code="anti_scrape_hard",
-                title="浏览器渲染后仍是验证码/人机校验页",
-                detail=str(anti.get("detected_mechanisms") or "hard anti-scrape"),
+                title="目标站启用了验证码/人机校验",
+                detail=str(anti.get("recommendations") or anti.get("detected_mechanisms") or "hard anti-scrape"),
                 hints=hints_for_error_code("anti_scrape_hard", cookies_configured=request_cookies_configured()),
                 stage="web_analyzer",
                 recoverable=False,
             )
             yield {"type": "done", "source": "agent"}
             return
-        fetch_result = {
-            **fetch_result,
-            "success": True,
-            "html_file": pw.get("html_file") or "source_page.html",
-            "html_content": pw.get("html_content") or "",
-            "fetch_mode": "playwright",
-        }
-    elif not fetch_result.get("success"):
-        yield _todos_event(completed_through=-1, failed_index=0)
-        yield _error_event(
-            code="fetch_failed",
-            title="网页抓取失败",
-            detail=str(fetch_result.get("error") or "未知网络错误"),
-            hints=hints_for_error_code("fetch_failed"),
-            stage="web_analyzer",
-            recoverable=False,
-        )
-        yield {"type": "done", "source": "agent"}
-        return
 
-    analysis = await analyze_html_structure.ainvoke(
-        {"html_file": fetch_result["html_file"], "url": resolved_url}
-    )
-    workspace.write_text(
-        "analysis_report.json",
-        json.dumps(
-            {
-                "analysis": analysis,
-                "anti_scraping": anti,
-                "fetch": {
-                    k: v
-                    for k, v in fetch_result.items()
-                    if k != "html_content"
-                },
-                "fetch_mode": fetch_mode,
-                "scrape_engine": scrape_engine,
-                "anti_level": anti.get("level"),
-                "escalation_reason": escalation_reason,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-    )
-    for event in await _emit_stage_complete(call_id, _preview(analysis)):
-        yield event
-    yield _todos_event(completed_through=0, active_index=1)
-    yield _workspace_updated_event(workspace)
-
-    # Stage 2: code_generator
-    stage_events = await _emit_stage_start("code_generator", "根据分析结果生成 spider.py")
-    call_id = stage_events[0]["call_id"]
-    for event in stage_events:
-        yield event
-
-    code, code_source = await _generate_spider_code_with_retry(
-        llm_api_key=llm_api_key,
-        llm_base_url=llm_base_url,
-        model_name=model_name,
-        target_url=resolved_url,
-        analysis=analysis if isinstance(analysis, str) else json.dumps(analysis, ensure_ascii=False),
-        anti_scraping=anti if isinstance(anti, dict) else {},
-        scrape_engine=scrape_engine,
-    )
-    syntax = await _validate_python_code(code, scrape_engine=scrape_engine)
-    if not syntax.get("valid"):
-        yield _workspace_updated_event(workspace)
-        yield _todos_event(completed_through=0, failed_index=1)
-        yield _error_event(
-            code="codegen_syntax_invalid",
-            title="生成的爬虫代码语法无效",
-            detail=str(syntax.get("message") or "语法检查未通过"),
-            hints=[
-                "换用更强的代码模型（如 DeepSeek / OpenAI）再试",
-                "缩小需求描述，明确要提取的字段",
-                "检查本地 Ollama 模型是否过小导致胡乱生成",
-            ],
-            stage="code_generator",
-            recoverable=False,
-        )
-        yield {"type": "done", "source": "agent"}
-        return
-
-    save_msg = await save_spider_code.ainvoke({"code": code, "filename": "spider.py"})
-    if code_source == "template":
-        engine_label = "Playwright" if scrape_engine == "playwright" else "通用"
-        save_msg = f"{save_msg}\n（LLM 代码无效，已自动切换为内置{engine_label}爬虫模板）"
-    for event in await _emit_stage_complete(call_id, save_msg):
-        yield event
-    yield _todos_event(completed_through=1, active_index=2)
-    yield _workspace_updated_event(workspace)
-
-    # Stage 3: debug_agent
-    stage_events = await _emit_stage_start("debug_agent", "在 Docker 沙箱执行 spider.py")
-    call_id = stage_events[0]["call_id"]
-    for event in stage_events:
-        yield event
-
-    exec_result, exec_source = await _execute_spider_with_retry(
-        execute_in_sandbox=execute_in_sandbox,
-        workspace=workspace,
-        llm_api_key=llm_api_key,
-        llm_base_url=llm_base_url,
-        model_name=model_name,
-        target_url=resolved_url,
-        code_source=code_source,
-        scrape_engine=scrape_engine,
-    )
-    local_html_retry_done = False
-    if not exec_result.get("success"):
-        detail = str(exec_result.get("error") or exec_result.get("output_preview") or "未知执行错误")
-        no_data = is_empty_scrape_result(exec_result, detail)
-
-        if no_data and should_escalate_after_empty_scrape(
-            scrape_engine=scrape_engine,
-            anti_level=str(anti.get("level") or "none"),
-            already_escalated=already_escalated,
-        ):
+        if mode == "playwright":
+            if anti.get("escalate_to_browser"):
+                escalation_reason = "classify_escalate"
+            elif anti.get("block_hard") and request_cookies_configured():
+                escalation_reason = "cookie_hard_retry"
+            else:
+                escalation_reason = "http_fetch_failed"
             if not probe_playwright_available(workspace):
-                yield _workspace_updated_event(workspace)
-                yield _todos_event(completed_through=1, failed_index=2)
+                yield _todos_event(completed_through=-1, failed_index=0)
                 yield _error_event(
                     code="browser_image_unavailable",
-                    title="空爬取后需升级浏览器，但沙箱镜像无 Playwright",
-                    detail=detail,
+                    title="需要浏览器抓取，但沙箱镜像未提供 Playwright",
+                    detail=str(fetch_result.get("error") or "HTTP 抓取不足，需升级 Playwright"),
                     hints=hints_for_error_code("browser_image_unavailable"),
-                    stage="debug_agent",
+                    stage="web_analyzer",
                     recoverable=False,
                 )
                 yield {"type": "done", "source": "agent"}
@@ -1127,141 +1035,309 @@ async def spider_pipeline_stream(
 
             pw = run_playwright_fetch(workspace, resolved_url)
             if not pw.get("success"):
-                yield _workspace_updated_event(workspace)
-                yield _todos_event(completed_through=1, failed_index=2)
+                code = "fetch_failed" if not fetch_result.get("success") else "browser_fetch_failed"
+                yield _todos_event(completed_through=-1, failed_index=0)
                 yield _error_event(
-                    code="browser_fetch_failed",
-                    title="空爬取后的浏览器重抓失败",
-                    detail=str(pw.get("error") or detail),
-                    hints=hints_for_error_code("browser_fetch_failed"),
-                    stage="debug_agent",
+                    code=code,
+                    title="网页抓取失败",
+                    detail=str(pw.get("error") or fetch_result.get("error") or "browser fetch failed"),
+                    hints=hints_for_error_code(code),
+                    stage="web_analyzer",
                     recoverable=False,
                 )
                 yield {"type": "done", "source": "agent"}
                 return
 
             already_escalated = True
-            scrape_engine = "playwright"
             fetch_mode = "playwright"
-            escalation_reason = "empty_scrape_soft"
+            scrape_engine = "playwright"
             anti = classify_fetch_result(
                 url=resolved_url,
                 html=str(pw.get("html_content") or ""),
                 status_code=200,
             )
             if anti.get("block_hard"):
+                yield _todos_event(completed_through=-1, failed_index=0)
+                yield _error_event(
+                    code="anti_scrape_hard",
+                    title="浏览器渲染后仍是验证码/人机校验页",
+                    detail=str(anti.get("detected_mechanisms") or "hard anti-scrape"),
+                    hints=hints_for_error_code("anti_scrape_hard", cookies_configured=request_cookies_configured()),
+                    stage="web_analyzer",
+                    recoverable=False,
+                )
+                yield {"type": "done", "source": "agent"}
+                return
+            fetch_result = {
+                **fetch_result,
+                "success": True,
+                "html_file": pw.get("html_file") or "source_page.html",
+                "html_content": pw.get("html_content") or "",
+                "fetch_mode": "playwright",
+            }
+        elif not fetch_result.get("success"):
+            yield _todos_event(completed_through=-1, failed_index=0)
+            yield _error_event(
+                code="fetch_failed",
+                title="网页抓取失败",
+                detail=str(fetch_result.get("error") or "未知网络错误"),
+                hints=hints_for_error_code("fetch_failed"),
+                stage="web_analyzer",
+                recoverable=False,
+            )
+            yield {"type": "done", "source": "agent"}
+            return
+
+        analysis = await analyze_html_structure.ainvoke(
+            {"html_file": fetch_result["html_file"], "url": resolved_url}
+        )
+        workspace.write_text(
+            "analysis_report.json",
+            json.dumps(
+                {
+                    "analysis": analysis,
+                    "anti_scraping": anti,
+                    "fetch": {
+                        k: v
+                        for k, v in fetch_result.items()
+                        if k != "html_content"
+                    },
+                    "fetch_mode": fetch_mode,
+                    "scrape_engine": scrape_engine,
+                    "anti_level": anti.get("level"),
+                    "escalation_reason": escalation_reason,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+        for event in await _emit_stage_complete(call_id, _preview(analysis)):
+            yield event
+        yield _todos_event(completed_through=0, active_index=1)
+        yield _workspace_updated_event(workspace)
+
+    if resume_from <= 1:
+        # Stage 2: code_generator
+        stage_events = await _emit_stage_start("code_generator", "根据分析结果生成 spider.py")
+        call_id = stage_events[0]["call_id"]
+        for event in stage_events:
+            yield event
+
+        code, code_source = await _generate_spider_code_with_retry(
+            llm_api_key=llm_api_key,
+            llm_base_url=llm_base_url,
+            model_name=model_name,
+            target_url=resolved_url,
+            analysis=analysis if isinstance(analysis, str) else json.dumps(analysis, ensure_ascii=False),
+            anti_scraping=anti if isinstance(anti, dict) else {},
+            scrape_engine=scrape_engine,
+        )
+        syntax = await _validate_python_code(code, scrape_engine=scrape_engine)
+        if not syntax.get("valid"):
+            yield _workspace_updated_event(workspace)
+            yield _todos_event(completed_through=0, failed_index=1)
+            yield _error_event(
+                code="codegen_syntax_invalid",
+                title="生成的爬虫代码语法无效",
+                detail=str(syntax.get("message") or "语法检查未通过"),
+                hints=[
+                    "换用更强的代码模型（如 DeepSeek / OpenAI）再试",
+                    "缩小需求描述，明确要提取的字段",
+                    "检查本地 Ollama 模型是否过小导致胡乱生成",
+                ],
+                stage="code_generator",
+                recoverable=False,
+            )
+            yield {"type": "done", "source": "agent"}
+            return
+
+        save_msg = await save_spider_code.ainvoke({"code": code, "filename": "spider.py"})
+        if code_source == "template":
+            engine_label = "Playwright" if scrape_engine == "playwright" else "通用"
+            save_msg = f"{save_msg}\n（LLM 代码无效，已自动切换为内置{engine_label}爬虫模板）"
+        for event in await _emit_stage_complete(call_id, save_msg):
+            yield event
+        yield _todos_event(completed_through=1, active_index=2)
+        yield _workspace_updated_event(workspace)
+
+    if resume_from <= 2:
+        # Stage 3: debug_agent
+        stage_events = await _emit_stage_start("debug_agent", "在 Docker 沙箱执行 spider.py")
+        call_id = stage_events[0]["call_id"]
+        for event in stage_events:
+            yield event
+
+        exec_result, exec_source = await _execute_spider_with_retry(
+            execute_in_sandbox=execute_in_sandbox,
+            workspace=workspace,
+            llm_api_key=llm_api_key,
+            llm_base_url=llm_base_url,
+            model_name=model_name,
+            target_url=resolved_url,
+            code_source=code_source,
+            scrape_engine=scrape_engine,
+        )
+        local_html_retry_done = False
+        if not exec_result.get("success"):
+            detail = str(exec_result.get("error") or exec_result.get("output_preview") or "未知执行错误")
+            no_data = is_empty_scrape_result(exec_result, detail)
+
+            if no_data and should_escalate_after_empty_scrape(
+                scrape_engine=scrape_engine,
+                anti_level=str(anti.get("level") or "none"),
+                already_escalated=already_escalated,
+            ):
+                if not probe_playwright_available(workspace):
+                    yield _workspace_updated_event(workspace)
+                    yield _todos_event(completed_through=1, failed_index=2)
+                    yield _error_event(
+                        code="browser_image_unavailable",
+                        title="空爬取后需升级浏览器，但沙箱镜像无 Playwright",
+                        detail=detail,
+                        hints=hints_for_error_code("browser_image_unavailable"),
+                        stage="debug_agent",
+                        recoverable=False,
+                    )
+                    yield {"type": "done", "source": "agent"}
+                    return
+
+                pw = run_playwright_fetch(workspace, resolved_url)
+                if not pw.get("success"):
+                    yield _workspace_updated_event(workspace)
+                    yield _todos_event(completed_through=1, failed_index=2)
+                    yield _error_event(
+                        code="browser_fetch_failed",
+                        title="空爬取后的浏览器重抓失败",
+                        detail=str(pw.get("error") or detail),
+                        hints=hints_for_error_code("browser_fetch_failed"),
+                        stage="debug_agent",
+                        recoverable=False,
+                    )
+                    yield {"type": "done", "source": "agent"}
+                    return
+
+                already_escalated = True
+                scrape_engine = "playwright"
+                fetch_mode = "playwright"
+                escalation_reason = "empty_scrape_soft"
+                anti = classify_fetch_result(
+                    url=resolved_url,
+                    html=str(pw.get("html_content") or ""),
+                    status_code=200,
+                )
+                if anti.get("block_hard"):
+                    yield _workspace_updated_event(workspace)
+                    yield _todos_event(completed_through=1, failed_index=2)
+                    yield _error_event(
+                        code="anti_scrape_hard",
+                        title="升级浏览器后仍是验证码页",
+                        detail=str(anti.get("detected_mechanisms") or detail),
+                        hints=hints_for_error_code("anti_scrape_hard", cookies_configured=request_cookies_configured()),
+                        stage="debug_agent",
+                        recoverable=False,
+                    )
+                    yield {"type": "done", "source": "agent"}
+                    return
+
+                analysis = await analyze_html_structure.ainvoke(
+                    {"html_file": pw.get("html_file") or "source_page.html", "url": resolved_url}
+                )
+                code, code_source = await _generate_spider_code_with_retry(
+                    llm_api_key=llm_api_key,
+                    llm_base_url=llm_base_url,
+                    model_name=model_name,
+                    target_url=resolved_url,
+                    analysis=analysis if isinstance(analysis, str) else json.dumps(analysis, ensure_ascii=False),
+                    anti_scraping=anti if isinstance(anti, dict) else {},
+                    scrape_engine=scrape_engine,
+                )
+                await save_spider_code.ainvoke({"code": code, "filename": "spider.py"})
+                exec_result, exec_source = await _execute_spider_with_retry(
+                    execute_in_sandbox=execute_in_sandbox,
+                    workspace=workspace,
+                    llm_api_key=llm_api_key,
+                    llm_base_url=llm_base_url,
+                    model_name=model_name,
+                    target_url=resolved_url,
+                    code_source=code_source,
+                    scrape_engine=scrape_engine,
+                )
+
+            if (
+                not exec_result.get("success")
+                and is_empty_scrape_result(
+                    exec_result,
+                    str(exec_result.get("error") or exec_result.get("output_preview") or ""),
+                )
+                and should_retry_parse_existing_html(
+                    has_source_page=workspace.exists("source_page.html"),
+                    already_retried=local_html_retry_done,
+                )
+            ):
+                local_html_retry_done = True
+                escalation_reason = "empty_scrape_local_html"
+                analysis = await analyze_html_structure.ainvoke(
+                    {"html_file": "source_page.html", "url": resolved_url}
+                )
+                code, code_source = await _generate_spider_code_with_retry(
+                    llm_api_key=llm_api_key,
+                    llm_base_url=llm_base_url,
+                    model_name=model_name,
+                    target_url=resolved_url,
+                    analysis=analysis if isinstance(analysis, str) else json.dumps(analysis, ensure_ascii=False),
+                    anti_scraping=anti if isinstance(anti, dict) else {},
+                    scrape_engine=scrape_engine,
+                )
+                await save_spider_code.ainvoke({"code": code, "filename": "spider.py"})
+                exec_result, exec_source = await _execute_spider_with_retry(
+                    execute_in_sandbox=execute_in_sandbox,
+                    workspace=workspace,
+                    llm_api_key=llm_api_key,
+                    llm_base_url=llm_base_url,
+                    model_name=model_name,
+                    target_url=resolved_url,
+                    code_source=code_source,
+                    scrape_engine=scrape_engine,
+                )
+
+            if not exec_result.get("success"):
+                detail = str(exec_result.get("error") or exec_result.get("output_preview") or "未知执行错误")
+                no_data = is_empty_scrape_result(exec_result, detail)
+                err_code = "empty_scrape" if no_data else "execution_failed"
+                hints = hints_for_error_code(err_code)
+                if no_data and workspace.exists("source_page.html"):
+                    hints = [
+                        "工作区已有 source_page.html：打开核对选择器是否匹配列表节点",
+                        *hints,
+                    ]
                 yield _workspace_updated_event(workspace)
                 yield _todos_event(completed_through=1, failed_index=2)
                 yield _error_event(
-                    code="anti_scrape_hard",
-                    title="升级浏览器后仍是验证码页",
-                    detail=str(anti.get("detected_mechanisms") or detail),
-                    hints=hints_for_error_code("anti_scrape_hard", cookies_configured=request_cookies_configured()),
+                    code=err_code,
+                    title="未能爬取到有效数据" if no_data else "爬虫执行失败",
+                    detail=detail,
+                    hints=hints,
                     stage="debug_agent",
                     recoverable=False,
                 )
                 yield {"type": "done", "source": "agent"}
                 return
 
-            analysis = await analyze_html_structure.ainvoke(
-                {"html_file": pw.get("html_file") or "source_page.html", "url": resolved_url}
-            )
-            code, code_source = await _generate_spider_code_with_retry(
-                llm_api_key=llm_api_key,
-                llm_base_url=llm_base_url,
-                model_name=model_name,
-                target_url=resolved_url,
-                analysis=analysis if isinstance(analysis, str) else json.dumps(analysis, ensure_ascii=False),
-                anti_scraping=anti if isinstance(anti, dict) else {},
-                scrape_engine=scrape_engine,
-            )
-            await save_spider_code.ainvoke({"code": code, "filename": "spider.py"})
-            exec_result, exec_source = await _execute_spider_with_retry(
-                execute_in_sandbox=execute_in_sandbox,
-                workspace=workspace,
-                llm_api_key=llm_api_key,
-                llm_base_url=llm_base_url,
-                model_name=model_name,
-                target_url=resolved_url,
-                code_source=code_source,
-                scrape_engine=scrape_engine,
-            )
-
-        if (
-            not exec_result.get("success")
-            and is_empty_scrape_result(
-                exec_result,
-                str(exec_result.get("error") or exec_result.get("output_preview") or ""),
-            )
-            and should_retry_parse_existing_html(
-                has_source_page=workspace.exists("source_page.html"),
-                already_retried=local_html_retry_done,
-            )
-        ):
-            local_html_retry_done = True
-            escalation_reason = "empty_scrape_local_html"
-            analysis = await analyze_html_structure.ainvoke(
-                {"html_file": "source_page.html", "url": resolved_url}
-            )
-            code, code_source = await _generate_spider_code_with_retry(
-                llm_api_key=llm_api_key,
-                llm_base_url=llm_base_url,
-                model_name=model_name,
-                target_url=resolved_url,
-                analysis=analysis if isinstance(analysis, str) else json.dumps(analysis, ensure_ascii=False),
-                anti_scraping=anti if isinstance(anti, dict) else {},
-                scrape_engine=scrape_engine,
-            )
-            await save_spider_code.ainvoke({"code": code, "filename": "spider.py"})
-            exec_result, exec_source = await _execute_spider_with_retry(
-                execute_in_sandbox=execute_in_sandbox,
-                workspace=workspace,
-                llm_api_key=llm_api_key,
-                llm_base_url=llm_base_url,
-                model_name=model_name,
-                target_url=resolved_url,
-                code_source=code_source,
-                scrape_engine=scrape_engine,
-            )
-
-        if not exec_result.get("success"):
-            detail = str(exec_result.get("error") or exec_result.get("output_preview") or "未知执行错误")
-            no_data = is_empty_scrape_result(exec_result, detail)
-            err_code = "empty_scrape" if no_data else "execution_failed"
-            hints = hints_for_error_code(err_code)
-            if no_data and workspace.exists("source_page.html"):
-                hints = [
-                    "工作区已有 source_page.html：打开核对选择器是否匹配列表节点",
-                    *hints,
-                ]
-            yield _workspace_updated_event(workspace)
-            yield _todos_event(completed_through=1, failed_index=2)
-            yield _error_event(
-                code=err_code,
-                title="未能爬取到有效数据" if no_data else "爬虫执行失败",
-                detail=detail,
-                hints=hints,
-                stage="debug_agent",
-                recoverable=False,
-            )
-            yield {"type": "done", "source": "agent"}
-            return
-
-    exec_preview = _preview(exec_result)
-    if exec_source == "template":
-        exec_preview = f"{exec_preview}\n（LLM 代码运行失败，已自动切换为内置爬虫模板）"
-        original_err = str(exec_result.get("fallback_from_error") or "").strip()
-        if original_err:
-            workspace.write_text("llm_exec_error.txt", original_err)
-            exec_preview = f"{exec_preview}\n原始错误: {_preview(original_err, limit=400)}"
-    elif exec_source == "llm_runtime_fixed":
-        exec_preview = f"{exec_preview}\n（已根据运行错误自动修复代码）"
-    if fetch_mode == "playwright":
-        exec_preview = f"{exec_preview}\n（fetch_mode=playwright）"
-    for event in await _emit_stage_complete(call_id, exec_preview):
-        yield event
-    yield _todos_event(completed_through=2, active_index=3)
-    yield _workspace_updated_event(workspace)
+        exec_preview = _preview(exec_result)
+        if exec_source == "template":
+            exec_preview = f"{exec_preview}\n（LLM 代码运行失败，已自动切换为内置爬虫模板）"
+            original_err = str(exec_result.get("fallback_from_error") or "").strip()
+            if original_err:
+                workspace.write_text("llm_exec_error.txt", original_err)
+                exec_preview = f"{exec_preview}\n原始错误: {_preview(original_err, limit=400)}"
+        elif exec_source == "llm_runtime_fixed":
+            exec_preview = f"{exec_preview}\n（已根据运行错误自动修复代码）"
+        if fetch_mode == "playwright":
+            exec_preview = f"{exec_preview}\n（fetch_mode=playwright）"
+        for event in await _emit_stage_complete(call_id, exec_preview):
+            yield event
+        yield _todos_event(completed_through=2, active_index=3)
+        yield _workspace_updated_event(workspace)
 
     # Stage 4: data_processor
     stage_events = await _emit_stage_start("data_processor", "清洗并验证 scraped_data.json")

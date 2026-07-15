@@ -12,6 +12,7 @@ import type { SpiderSSEEvent } from '@/features/spider/types/events';
 import { normalizeSpiderTodos, type SpiderTodoItem } from '@/features/spider/types/todo';
 import { useSpiderChatStore } from '@/features/spider/stores/useSpiderChatStore';
 import { useSpiderWorkspace } from '@/features/spider/hooks/useSpiderWorkspace';
+import { findResumableMessage } from '@/features/spider/utils/resumableMessage';
 
 const PROGRESS_SLOW_NOTICE_MS = 8000;
 
@@ -21,11 +22,14 @@ export function useSpiderChat() {
   const { refreshWorkspace } = useSpiderWorkspace();
   const currentClientRef = useRef<SSEClient<SpiderSSEEvent> | null>(null);
 
-  const sendMessage = async (text: string) => {
-    if (!modelConfigId) {
-      throw new Error(t('spider.chat.modelRequired'));
-    }
-
+  const startRun = async (params: {
+    text: string;
+    assistantMessageId: string;
+    appendUserMessage: boolean;
+    resume: boolean;
+    seedToolRuns?: ChatToolRun[];
+    seedTodos?: SpiderTodoItem[];
+  }) => {
     const {
       addMessage,
       updateMessage,
@@ -36,29 +40,39 @@ export function useSpiderChat() {
       cookies,
     } = useSpiderChatStore.getState();
 
-    addMessage({
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: text,
-    });
+    const { text, assistantMessageId, appendUserMessage, resume } = params;
 
-    const assistantMessageId = `assistant-${Date.now()}`;
-    addMessage({
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      isThinking: true,
-      toolRuns: [],
-    });
+    if (appendUserMessage) {
+      addMessage({
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: text,
+      });
+      addMessage({
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        isThinking: true,
+        toolRuns: [],
+      });
+    } else {
+      // Resume: reuse the interrupted/failed bubble and let the stream advance
+      // it in place (clearing the failure card and reviving the thinking state).
+      updateMessage(assistantMessageId, {
+        isThinking: true,
+        statusLabel: undefined,
+        failure: undefined,
+      });
+    }
 
     setGenerating(true);
 
     let contentBuffer = '';
     let hasDoneEvent = false;
     let hasErrorEvent = false;
-    const toolRuns: ChatToolRun[] = [];
+    const toolRuns: ChatToolRun[] = params.seedToolRuns ? [...params.seedToolRuns] : [];
     const pendingTools = new Map<string, ChatToolRun>();
-    let todos: SpiderTodoItem[] | undefined;
+    let todos: SpiderTodoItem[] | undefined = params.seedTodos;
 
     const syncAssistant = (patch: {
       content?: string;
@@ -116,6 +130,7 @@ export function useSpiderChat() {
         model_config_id: modelConfigId,
         target_url: targetUrl || null,
         cookies: cookies.trim() || null,
+        resume,
       }),
       onEvent: (event) => {
         if (event.type === 'session' && 'session_id' in event) {
@@ -288,11 +303,44 @@ export function useSpiderChat() {
     currentClientRef.current = null;
   };
 
+  const sendMessage = async (text: string) => {
+    if (!modelConfigId) {
+      throw new Error(t('spider.chat.modelRequired'));
+    }
+    await startRun({
+      text,
+      assistantMessageId: `assistant-${Date.now()}`,
+      appendUserMessage: true,
+      resume: false,
+    });
+  };
+
+  const resumeTask = async () => {
+    if (!modelConfigId) {
+      throw new Error(t('spider.chat.modelRequired'));
+    }
+    const { messages } = useSpiderChatStore.getState();
+    const target = findResumableMessage(messages);
+    if (!target) return;
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    const text = lastUser?.content?.trim() || t('spider.chat.resumeTask');
+
+    useSpiderChatStore.getState().setRestoreInterruptedHint(false);
+    await startRun({
+      text,
+      assistantMessageId: target.id,
+      appendUserMessage: false,
+      resume: true,
+      seedToolRuns: target.toolRuns,
+      seedTodos: target.todos,
+    });
+  };
+
   const cancelCurrentRequest = () => {
     currentClientRef.current?.cancel();
     currentClientRef.current = null;
     useSpiderChatStore.getState().setGenerating(false);
   };
 
-  return { sendMessage, cancelCurrentRequest };
+  return { sendMessage, resumeTask, cancelCurrentRequest };
 }

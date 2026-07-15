@@ -584,6 +584,8 @@
       "error": "Spider task failed",
       "streamError": "Stream interrupted. Check backend, Docker, and model config.",
       "restoreInterrupted": "Page refresh interrupted the live run. Workspace files on the right will sync automatically; if the backend is still running, new outputs will appear shortly.",
+      "resumeAvailable": "The last task did not finish. You can continue from where it stopped; completed steps are skipped automatically.",
+      "resumeTask": "Resume task",
       "modelRequired": "Configure a model connection in settings first",
       "progress": {
         "slow": "(This step is taking longer…)"
