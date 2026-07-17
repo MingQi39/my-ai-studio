@@ -19,12 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build frontend assets
-        working-directory: frontend
-        run: |
-          npm ci
-          NODE_OPTIONS=--max-old-space-size=4096 npm run build
-
       - name: Build production images
         run: |
           docker build -t my-ai-studio-backend:latest -f backend/Dockerfile.server backend
@@ -38,12 +32,8 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Upload release
+      - name: Upload built images
         run: |
-          rsync -az --delete \
-            --exclude '.env' --exclude 'images.tar.gz' --exclude '.git' \
-            -e "ssh -i ~/.ssh/id_ed25519" \
-            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
           scp -i ~/.ssh/id_ed25519 images.tar.gz \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/images.tar.gz"
 
