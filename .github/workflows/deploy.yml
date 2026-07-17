@@ -14,16 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write
     env:
       DEPLOY_PATH: /home/ubuntu/my-ai-studio
+      BACKEND_IMAGE: ghcr.io/mingqi39/my-ai-studio-backend:latest
+      FRONTEND_IMAGE: ghcr.io/mingqi39/my-ai-studio-frontend:latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Build production images
         run: |
-          docker build -t my-ai-studio-backend:latest -f backend/Dockerfile.server backend
-          docker build -t my-ai-studio-frontend:latest -f frontend/Dockerfile.server frontend
-          docker save my-ai-studio-backend:latest my-ai-studio-frontend:latest | gzip > images.tar.gz
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker build -t "$BACKEND_IMAGE" -f backend/Dockerfile.server backend
+          docker build -t "$FRONTEND_IMAGE" -f frontend/Dockerfile.server frontend
+          docker push "$BACKEND_IMAGE"
+          docker push "$FRONTEND_IMAGE"
 
       - name: Configure SSH
         run: |
@@ -32,18 +37,17 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Upload built images
-        run: |
-          scp -i ~/.ssh/id_ed25519 images.tar.gz \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/images.tar.gz"
-
       - name: Activate release
         run: |
-          ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" <<'SSH'
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" <<SSH
             set -euo pipefail
             cd /home/ubuntu/my-ai-studio
-            sudo -n docker load < images.tar.gz
-            rm images.tar.gz
+            echo "${{ github.token }}" | sudo -n docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            sudo -n docker pull "$BACKEND_IMAGE"
+            sudo -n docker pull "$FRONTEND_IMAGE"
+            sudo -n docker tag "$BACKEND_IMAGE" my-ai-studio-backend:latest
+            sudo -n docker tag "$FRONTEND_IMAGE" my-ai-studio-frontend:latest
+            sudo -n docker logout ghcr.io
             sudo -n docker compose -f docker-compose.server.yml up -d --no-build
             sudo -n docker compose -f docker-compose.server.yml ps
           SSH
