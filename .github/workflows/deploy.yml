@@ -10,47 +10,70 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build-images:
+    name: Build production images
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-    env:
-      DEPLOY_PATH: /home/ubuntu/my-ai-studio
-      BACKEND_IMAGE: ghcr.io/mingqi39/my-ai-studio-backend:latest
-      FRONTEND_IMAGE: ghcr.io/mingqi39/my-ai-studio-frontend:latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build production images
+      - name: Build images
         run: |
-          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker build -t "$BACKEND_IMAGE" -f backend/Dockerfile.server backend
-          docker build -t "$FRONTEND_IMAGE" -f frontend/Dockerfile.server frontend
-          docker push "$BACKEND_IMAGE"
-          docker push "$FRONTEND_IMAGE"
+          docker build -t my-ai-studio-backend:latest -f backend/Dockerfile.server backend
+          docker build -t my-ai-studio-frontend:latest -f frontend/Dockerfile.server frontend
+          docker save my-ai-studio-backend:latest my-ai-studio-frontend:latest | gzip > images.tar.gz
 
-      - name: Configure SSH
+      - name: Upload built images
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-images
+          path: images.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy from Mac
+    needs: build-images
+    runs-on: [self-hosted, macOS, deploy]
+    permissions:
+      contents: read
+    env:
+      DEPLOY_PATH: /home/ubuntu/my-ai-studio
+    steps:
+      - name: Download built images
+        uses: actions/download-artifact@v4
+        with:
+          name: production-images
+
+      - name: Load and upload images from Mac
+        shell: bash
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          set -euo pipefail
+          SSH_KEY_PATH="$HOME/.ssh/id_ed25519_personal"
+          test -r "$SSH_KEY_PATH"
+          chmod 600 "$SSH_KEY_PATH"
+          docker load -i images.tar.gz
+          docker save my-ai-studio-backend:latest my-ai-studio-frontend:latest | \
+            ssh -i "$SSH_KEY_PATH" \
+              -o IdentitiesOnly=yes \
+              -o ServerAliveInterval=30 \
+              -o ServerAliveCountMax=40 \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              'sudo -n docker load'
 
       - name: Activate release
+        shell: bash
         run: |
-          ssh -i ~/.ssh/id_ed25519 \
+          set -euo pipefail
+          SSH_KEY_PATH="$HOME/.ssh/id_ed25519_personal"
+          ssh -i "$SSH_KEY_PATH" \
+            -o IdentitiesOnly=yes \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=40 \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" <<SSH
-            set -euo pipefail
-            cd /home/ubuntu/my-ai-studio
-            echo "${{ github.token }}" | sudo -n docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-            sudo -n docker pull "$BACKEND_IMAGE"
-            sudo -n docker pull "$FRONTEND_IMAGE"
-            sudo -n docker tag "$BACKEND_IMAGE" my-ai-studio-backend:latest
-            sudo -n docker tag "$FRONTEND_IMAGE" my-ai-studio-frontend:latest
-            sudo -n docker logout ghcr.io
-            sudo -n docker compose -f docker-compose.server.yml up -d --no-build
-            sudo -n docker compose -f docker-compose.server.yml ps
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" <<'SSH'
+              set -euo pipefail
+              cd /home/ubuntu/my-ai-studio
+              sudo -n docker compose -f docker-compose.server.yml up -d --no-build
+              sudo -n docker compose -f docker-compose.server.yml ps
           SSH
