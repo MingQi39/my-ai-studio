@@ -39,7 +39,10 @@ jobs:
 
       - name: Activate release
         run: |
-          ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" <<SSH
+          ssh -i ~/.ssh/id_ed25519 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" <<SSH
             set -euo pipefail
             cd /home/ubuntu/my-ai-studio
             echo "${{ github.token }}" | sudo -n docker login ghcr.io -u "${{ github.actor }}" --password-stdin
