@@ -74,7 +74,7 @@ uvloop==0.22.1
 vine==5.1.0
 watchfiles==1.1.1
 wcwidth==0.3.0
-websockets==16.0
+websockets==15.0.1
 markdown==3.10.2
 fpdf2==2.8.5
 langchain
