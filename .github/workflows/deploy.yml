@@ -1,0 +1,59 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DEPLOY_PATH: /home/ubuntu/my-ai-studio
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frontend assets
+        working-directory: frontend
+        run: |
+          npm ci
+          NODE_OPTIONS=--max-old-space-size=4096 npm run build
+
+      - name: Build production images
+        run: |
+          docker build -t my-ai-studio-backend:latest -f backend/Dockerfile.server backend
+          docker build -t my-ai-studio-frontend:latest -f frontend/Dockerfile.server frontend
+          docker save my-ai-studio-backend:latest my-ai-studio-frontend:latest | gzip > images.tar.gz
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload release
+        run: |
+          rsync -az --delete \
+            --exclude '.env' --exclude 'images.tar.gz' --exclude '.git' \
+            -e "ssh -i ~/.ssh/id_ed25519" \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/"
+          scp -i ~/.ssh/id_ed25519 images.tar.gz \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/images.tar.gz"
+
+      - name: Activate release
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" <<'SSH'
+            set -euo pipefail
+            cd /home/ubuntu/my-ai-studio
+            sudo -n docker load < images.tar.gz
+            rm images.tar.gz
+            sudo -n docker compose -f docker-compose.server.yml up -d --no-build
+            sudo -n docker compose -f docker-compose.server.yml ps
+          SSH
