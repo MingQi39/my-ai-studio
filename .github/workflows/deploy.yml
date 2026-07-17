@@ -54,13 +54,13 @@ jobs:
           test -r "$SSH_KEY_PATH"
           chmod 600 "$SSH_KEY_PATH"
           docker load -i images.tar.gz
-          docker save my-ai-studio-backend:latest my-ai-studio-frontend:latest | \
+          docker save my-ai-studio-backend:latest my-ai-studio-frontend:latest | gzip -1 | \
             ssh -i "$SSH_KEY_PATH" \
               -o IdentitiesOnly=yes \
               -o ServerAliveInterval=30 \
               -o ServerAliveCountMax=40 \
               "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-              'sudo -n docker load'
+              'gzip -d | sudo -n docker load'
 
       - name: Activate release
         shell: bash
