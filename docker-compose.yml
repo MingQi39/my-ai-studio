@@ -38,27 +38,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    expose:
-      - "80"
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    environment:
-      DOMAIN: ${DOMAIN:?set DOMAIN in .env, e.g. ai.example.com}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - frontend
-      - backend
+      - "8081:80"
 
 volumes:
   app-data:
-  caddy-data:
-  caddy-config:

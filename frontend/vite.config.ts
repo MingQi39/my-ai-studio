@@ -30,8 +30,8 @@ async function resolveDevApiProxyTarget(): Promise<string> {
     return 'http://127.0.0.1:10011';
   }
 
-  if (await isPortOpen(8080)) {
-    return 'http://127.0.0.1:8080';
+  if (await isPortOpen(8081)) {
+    return 'http://127.0.0.1:8081';
   }
 
   return 'http://127.0.0.1:10011';

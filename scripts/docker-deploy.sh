@@ -78,7 +78,7 @@ fi
 merge_env_from_backend
 
 missing=()
-for required in DOMAIN SECRET_KEY API_KEY_ENCRYPTION_KEY; do
+for required in SECRET_KEY API_KEY_ENCRYPTION_KEY; do
   if [ -z "$(get_env_value ".env" "$required")" ]; then
     missing+=("$required")
   fi
@@ -102,11 +102,4 @@ echo "[完成] 部署已启动"
 echo "  查看状态: docker compose ps"
 echo "  查看日志: docker compose logs -f"
 
-domain="$(get_env_value ".env" "DOMAIN")"
-if [ "$domain" = ":80" ] || [ -z "$domain" ]; then
-  echo "  访问地址: http://localhost:8080"
-elif [[ "$domain" == http://* ]] || [[ "$domain" == https://* ]]; then
-  echo "  访问地址: ${domain}"
-else
-  echo "  访问地址: https://${domain}"
-fi
+echo "  访问地址: http://localhost:8081"

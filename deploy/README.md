@@ -3,17 +3,16 @@
 ## 架构
 
 ```text
-浏览器 → Caddy (80/443, 自动 HTTPS)
+浏览器 → frontend Nginx (8081)
            ├─ /api/*、/docs → backend (FastAPI)
-           └─ 其余路径        → frontend (Nginx 静态)
+           └─ 其余路径        → 静态前端
          backend 数据卷: SQLite + 上传文件
 ```
 
 ## 前置条件
 
 - 云服务器已安装 Docker 与 Docker Compose v2
-- 域名已 A 记录指向服务器公网 IP
-- 安全组 / 防火墙放行 **80、443**（SSH 按需）
+- 安全组 / 防火墙放行 **8081**（SSH 按需）
 
 ## 快速部署
 
@@ -23,7 +22,7 @@ git clone <your-repo> my-ai-studio && cd my-ai-studio
 
 # 2. 配置环境变量
 cp .env.docker.example .env
-nano .env   # 填写 DOMAIN、SECRET_KEY、API_KEY_ENCRYPTION_KEY、CORS_ORIGINS
+nano .env   # 填写 SECRET_KEY、API_KEY_ENCRYPTION_KEY、CORS_ORIGINS
 
 # 生成加密密钥（本地或服务器均可）
 cd backend && python generate_encryption_key.py && cd ..
@@ -36,7 +35,7 @@ docker compose ps
 docker compose logs -f backend
 ```
 
-访问：`https://你的域名`
+访问：`http://43.143.251.51:8081`
 
 ## 迁移本地已有数据
 
@@ -75,15 +74,15 @@ docker compose down -v          # 停止并删除数据卷（慎用）
 docker compose exec backend tar -czf - /app/data/myai_studio.db | gzip > backup-$(date +%F).db.tgz
 ```
 
-## 仅 IP、无域名（不推荐）
+## 域名切换
 
-无域名时无法自动签 HTTPS 证书。可临时把 `.env` 中 `DOMAIN` 设为 `:80`，`CORS_ORIGINS` 设为 `http://服务器IP`，并自行承担 HTTP 明文风险。
+当前部署直接使用 `http://服务器IP:8081`。备案完成后，可在服务器前置反向代理或负载均衡，将域名的 HTTPS 流量转发至 `frontend:80`（或主机 `127.0.0.1:8081`），并把 `.env` 的 `CORS_ORIGINS` 更新为最终的 `https://你的域名`。
 
 ## 故障排查
 
 | 现象 | 检查 |
 |------|------|
 | 502 | `docker compose logs backend` 是否迁移失败 |
-| 前端能开、API 失败 | Caddy 是否把 `/api` 转到 backend |
+| 前端能开、API 失败 | frontend Nginx 是否把 `/api` 转到 backend |
 | 登录后 Key 无效 | `API_KEY_ENCRYPTION_KEY` 是否与建库时一致 |
-| SSE 流式中断 | Caddy 已配置 `flush_interval -1` |
+| SSE 流式中断 | 查看 frontend 与 backend 容器日志 |

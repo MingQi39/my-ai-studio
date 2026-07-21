@@ -32,18 +32,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    expose:
-      - "80"
-    networks:
-      default:
-      lims_proxy:
-        aliases:
-          - qi-ai-studio-frontend
+    ports:
+      - "8081:80"
 
 volumes:
   app-data:
-
-networks:
-  lims_proxy:
-    external: true
-    name: lims_default

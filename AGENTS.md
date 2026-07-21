@@ -25,7 +25,7 @@ Unsure which skill → `/which-skill`. Matt engineering map only → `/ask-matt`
 - Product: Qi AI Studio — full-stack AI chat workbench + travel-planning agent.
 - Backend: FastAPI (`backend/`), JWT auth, SSE chat, BYOK model configs, travel tools under `/api/v1/travel/*`.
 - Frontend: React 18 + Vite + Tailwind + Radix (`frontend/`), 9-language i18n.
-- Ops: local `./scripts/start-macos-linux.sh`; Docker via `./scripts/docker-deploy.sh` + Caddy.
+- Ops: local `./scripts/start-macos-linux.sh`; Docker via `./scripts/docker-deploy.sh` (frontend published on port 8081).
 
 ## Agent skills
 

@@ -63,14 +63,13 @@ chmod +x scripts/start-macos-linux.sh
 
 ```bash
 cp .env.docker.example .env
-# 填写 DOMAIN、SECRET_KEY、API_KEY_ENCRYPTION_KEY、CORS_ORIGINS
+# 填写 SECRET_KEY、API_KEY_ENCRYPTION_KEY、CORS_ORIGINS
 # 旅行 Agent Key 可写在根 .env，或只写在 backend/.env 由部署脚本自动合并
 chmod +x scripts/docker-deploy.sh
 ./scripts/docker-deploy.sh
 ```
 
-- **云服务器**：配置真实域名后访问 `https://你的域名`（Caddy 自动 HTTPS），详见 [deploy/README.md](./deploy/README.md)
-- **本地 Docker**：`docker-compose.override.yml` 将 Caddy 映射到 **8080**，访问 http://localhost:8080
+- **Docker**：前端直接映射到 **8081**，访问 `http://服务器IP:8081`；当前服务器为 `http://43.143.251.51:8081`。
 
 常用命令：
 
