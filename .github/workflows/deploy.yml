@@ -41,6 +41,8 @@ jobs:
     env:
       DEPLOY_PATH: /home/ubuntu/my-ai-studio
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download built images
         uses: actions/download-artifact@v4
         with:
