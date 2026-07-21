@@ -62,6 +62,18 @@ jobs:
               "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
               'gzip -d | sudo -n docker load'
 
+      - name: Sync deployment manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH_KEY_PATH="$HOME/.ssh/id_ed25519_personal"
+          scp -i "$SSH_KEY_PATH" \
+            -o IdentitiesOnly=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=40 \
+            docker-compose.server.yml \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${DEPLOY_PATH}/docker-compose.server.yml"
+
       - name: Activate release
         shell: bash
         run: |
