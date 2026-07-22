@@ -49,7 +49,7 @@ from app.interview.learning_path import comic_url_for_topic
 from app.interview.orchestrator import TrainingOrchestrator, evaluate_with_optional_reflect
 from app.interview.question_bank_retrieval import QuestionBankRetrieval
 from app.interview.resume_craft import (
-    POLISH_SYSTEM_PROMPT,
+    build_polish_system_prompt,
     WINDOW_DAYS,
     build_resume_draft,
     check_eligibility,
@@ -927,7 +927,7 @@ class InterviewService:
             "model": role.model_id,
             "temperature": role.temperature,
             "messages": [
-                {"role": "system", "content": POLISH_SYSTEM_PROMPT},
+                {"role": "system", "content": build_polish_system_prompt()},
                 {
                     "role": "user",
                     "content": json.dumps(draft, ensure_ascii=False),

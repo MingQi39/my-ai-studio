@@ -4,11 +4,13 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from app.interview.resume_craft import (
-    check_eligibility,
+    _collect_metrics,
+    build_polish_system_prompt,
     build_resume_draft,
-    render_template_markdown,
-    extract_novel_metrics,
+    check_eligibility,
+    load_style_examples,
     polish_or_template,
+    render_template_markdown,
 )
 
 
@@ -57,6 +59,7 @@ def test_draft_excludes_candidate_claims_and_includes_evidence():
     )
     assert [c["id"] for c in draft["claims"]] == ["c1"]
     assert draft["evidence_from_training"][0]["topic"] == "SSE"
+    assert draft["evidence_from_training"][0]["work_bucket"] == "trade-off"
     assert "SSE" in draft["evidence_from_training"][0]["user_answer_excerpts"][0]
 
 
@@ -69,8 +72,59 @@ def test_template_markdown_contains_footer_and_no_fake_metrics():
     }
     md = render_template_markdown(draft)
     assert "网关" in md
-    assert "待验证" in md or "未经验证" in md
+    assert "技能关键词" in md
+    assert "项目成果" in md
+    assert "待补充数据" in md
+    assert "未经验证" in md
     assert "300%" not in md
+
+
+def test_template_markdown_groups_work_buckets():
+    draft = {
+        "profile": {"target_role": "后端", "target_level": "P6", "salary_band": None, "keywords": []},
+        "claims": [{"id": "1", "category": "project", "label": "网关", "keywords": ["Go"]}],
+        "evidence_from_training": [
+            {
+                "attempt_id": "a1",
+                "topic": "限流",
+                "focus_node": "Trade-off",
+                "work_bucket": "trade-off",
+                "source_claim_ids": ["1"],
+                "user_answer_excerpts": ["选用令牌桶因为平滑突发"],
+                "covered_nodes": ["Trade-off"],
+                "evaluation_flags": {},
+            },
+            {
+                "attempt_id": "a2",
+                "topic": "观测",
+                "focus_node": "Evidence",
+                "work_bucket": "evidence",
+                "source_claim_ids": ["1"],
+                "user_answer_excerpts": ["用延迟直方图验证尾延迟"],
+                "covered_nodes": ["Evidence"],
+                "evaluation_flags": {},
+            },
+        ],
+        "constraints": [],
+    }
+    md = render_template_markdown(draft)
+    assert "取舍与方案" in md
+    assert "证据与验证" in md
+    assert "技术栈" in md
+    assert "限流" in md
+
+
+def test_style_examples_have_no_metrics():
+    text = load_style_examples()
+    assert text
+    assert _collect_metrics(text) == set()
+
+
+def test_polish_system_prompt_includes_skeleton_and_examples():
+    prompt = build_polish_system_prompt()
+    assert "项目成果" in prompt
+    assert "示例·工业知识库" in prompt
+    assert "禁止" in prompt
 
 
 def test_novel_metrics_rejected_falls_back_to_template():
@@ -96,6 +150,7 @@ def test_polish_accepts_when_metric_already_in_excerpt():
                 "source_claim_ids": ["1"],
                 "topic": "性能",
                 "focus_node": "Evidence",
+                "work_bucket": "evidence",
                 "covered_nodes": ["Evidence"],
                 "attempt_id": "a",
                 "evaluation_flags": {},
