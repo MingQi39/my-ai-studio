@@ -11,6 +11,10 @@ def test_resolve_model_roles_defaults():
     reflect = resolve_model_role("reflect")
     assert reflect.temperature == 0.1
     assert reflect.model_id
+    resume_craft = resolve_model_role("resume_craft")
+    assert resume_craft.provider_hint == "template"
+    assert resume_craft.model_id == "template"
+    assert resume_craft.temperature == 0.3
 
 
 def test_lexical_rerank_boosts_overlap():

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+import httpx
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,10 +42,19 @@ from app.interview.schemas import (
     TrainingProgressResponse,
     TrainingPromptResponse,
 )
+from app.config import settings
+from app.interview.model_roles import resolve_model_role
 from app.interview.progress import build_progress_payload
 from app.interview.learning_path import comic_url_for_topic
 from app.interview.orchestrator import TrainingOrchestrator, evaluate_with_optional_reflect
 from app.interview.question_bank_retrieval import QuestionBankRetrieval
+from app.interview.resume_craft import (
+    POLISH_SYSTEM_PROMPT,
+    WINDOW_DAYS,
+    build_resume_draft,
+    check_eligibility,
+    polish_or_template,
+)
 from app.interview.training import (
     build_training_prompt,
     evaluate_answer,
@@ -65,6 +77,9 @@ from app.models.database import (
     InterviewSessionEvent,
     InterviewTrainingAttempt,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -779,6 +794,91 @@ class InterviewService:
             cards=cards,
         )
         return TrainingProgressResponse.model_validate(payload)
+
+    async def _list_committed_attempts(
+        self, profile_id: str, *, window_days: int = WINDOW_DAYS
+    ) -> list[InterviewTrainingAttempt]:
+        cutoff = _utcnow() - timedelta(days=window_days)
+        result = await self.db.execute(
+            select(InterviewTrainingAttempt).where(
+                InterviewTrainingAttempt.profile_id == profile_id,
+                InterviewTrainingAttempt.status == "committed",
+                InterviewTrainingAttempt.updated_at >= cutoff,
+            )
+        )
+        return list(result.scalars())
+
+    async def _maybe_polish_resume(self, draft: dict) -> str | None:
+        role = resolve_model_role("resume_craft")
+        if role.provider_hint == "template":
+            return None
+        base_url = (settings.INTERVIEW_RESUME_CRAFT_BASE_URL or "").rstrip("/")
+        if not base_url:
+            return None
+        url = f"{base_url}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        api_key = settings.INTERVIEW_RESUME_CRAFT_API_KEY or ""
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        payload = {
+            "model": role.model_id,
+            "temperature": role.temperature,
+            "messages": [
+                {"role": "system", "content": POLISH_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": json.dumps(draft, ensure_ascii=False),
+                },
+            ],
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            if not isinstance(content, str) or not content.strip():
+                return None
+            return content
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("resume_craft_polish_failed", extra={"error": str(exc)})
+            return None
+
+    async def resume_eligibility(self, user_id: UUID) -> dict:
+        profile = await self.get_or_create_profile(user_id)
+        claims = await self.list_claims(user_id)
+        confirmed = [c for c in claims if c.status == "confirmed"]
+        attempts = await self._list_committed_attempts(profile.id, window_days=WINDOW_DAYS)
+        return check_eligibility(
+            confirmed_claims=confirmed,
+            committed_attempts_7d=len(attempts),
+        )
+
+    async def craft_resume(self, user_id: UUID) -> dict:
+        profile = await self.get_or_create_profile(user_id)
+        claims = [c for c in await self.list_claims(user_id) if c.status == "confirmed"]
+        attempts = await self._list_committed_attempts(profile.id, window_days=WINDOW_DAYS)
+        gate = check_eligibility(confirmed_claims=claims, committed_attempts_7d=len(attempts))
+        if not gate["eligible"]:
+            raise HTTPException(
+                status_code=403,
+                detail={"reasons": gate["reasons"], "stats": gate["stats"]},
+            )
+        draft = build_resume_draft(
+            profile=profile, confirmed_claims=claims, committed_attempts=attempts
+        )
+        polished = await self._maybe_polish_resume(draft)
+        markdown, warnings = polish_or_template(draft=draft, polished=polished)
+        if not profile.target_role:
+            warnings.append("未设置目标岗位，标题区已用占位")
+        return {
+            "markdown": markdown,
+            "sources": {
+                "claim_ids": [str(c.id) for c in claims],
+                "attempt_ids": [str(a.id) for a in attempts],
+            },
+            "warnings": warnings,
+        }
 
     async def abandon_attempt(
         self, user_id: UUID, attempt_id: UUID, data: AbandonAttemptRequest

@@ -303,3 +303,26 @@ class TrainingProgressResponse(BaseModel):
     composite: ProgressComposite
     weekly_trend: list[ProgressWeekBucket]
     counted_rule: str
+
+
+class ResumeEligibilityStats(BaseModel):
+    confirmed_claims: int
+    confirmed_project_like_claims: int
+    committed_attempts_7d: int
+
+
+class ResumeEligibilityResponse(BaseModel):
+    eligible: bool
+    reasons: list[str] = Field(default_factory=list)
+    stats: ResumeEligibilityStats
+
+
+class ResumeCraftSources(BaseModel):
+    claim_ids: list[str] = Field(default_factory=list)
+    attempt_ids: list[str] = Field(default_factory=list)
+
+
+class ResumeCraftResponse(BaseModel):
+    markdown: str
+    sources: ResumeCraftSources
+    warnings: list[str] = Field(default_factory=list)

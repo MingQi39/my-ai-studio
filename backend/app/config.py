@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     INTERVIEW_HINT_MODEL: str = "rules"
     INTERVIEW_REFLECT_PROVIDER: str = "openai_compatible"
     INTERVIEW_REFLECT_MODEL: str = "gpt-4o-mini"
+    INTERVIEW_RESUME_CRAFT_PROVIDER: str = "template"  # template | openai_compatible
+    INTERVIEW_RESUME_CRAFT_MODEL: str = "template"
+    INTERVIEW_RESUME_CRAFT_BASE_URL: str = ""  # optional OpenAI-compatible base
+    INTERVIEW_RESUME_CRAFT_API_KEY: str = ""
 
     # Spider Agent (DeepAgents) — session artifacts live in Docker named volumes
     # Default slim is fine for static HTTP pages.

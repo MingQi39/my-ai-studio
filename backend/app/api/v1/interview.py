@@ -20,6 +20,8 @@ from app.interview.schemas import (
     InterviewClaimUpdate,
     InterviewProfileResponse,
     InterviewProfileUpdate,
+    ResumeCraftResponse,
+    ResumeEligibilityResponse,
     ResumeExtractionResponse,
     ReviewCardCreate,
     ReviewCardResponse,
@@ -98,6 +100,24 @@ async def extract_resume(
     return ResumeExtractionResponse(
         claims=[InterviewClaimCreate(**claim) for claim in extract_resume_claims(text)]
     )
+
+
+@router.get("/resume/eligibility", response_model=ResumeEligibilityResponse)
+async def resume_eligibility(
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    data = await InterviewService(db).resume_eligibility(user_id)
+    return ResumeEligibilityResponse(**data)
+
+
+@router.post("/resume/craft", response_model=ResumeCraftResponse)
+async def craft_resume(
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    data = await InterviewService(db).craft_resume(user_id)
+    return ResumeCraftResponse(**data)
 
 
 @router.get("/profile", response_model=InterviewProfileResponse)

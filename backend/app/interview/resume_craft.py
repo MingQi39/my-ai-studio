@@ -12,6 +12,12 @@ WINDOW_DAYS = 7
 PROJECT_LIKE = frozenset({"project", "role"})
 EXCERPT_MAX = 280
 
+POLISH_SYSTEM_PROMPT = (
+    "你是中文技术简历润色器。只根据用户提供的 ResumeDraft JSON 输出一份 Markdown 简历。\n"
+    "禁止新增数字、公司、职责、项目或成果。缺数据时写「（待补充数据）」。\n"
+    "不要输出 JSON，不要解释，只输出 Markdown。"
+)
+
 _METRIC_PATTERNS = [
     re.compile(r"\d+(\.\d+)?\s*%"),
     re.compile(r"\d+(\.\d+)?\s*倍"),

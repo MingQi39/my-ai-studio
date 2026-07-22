@@ -84,3 +84,26 @@ def test_novel_metrics_rejected_falls_back_to_template():
     md, warnings = polish_or_template(draft=draft, polished=polished)
     assert "300%" not in md
     assert any("metric" in w for w in warnings)
+
+
+def test_polish_accepts_when_metric_already_in_excerpt():
+    draft = {
+        "profile": {"target_role": "后端", "target_level": "P6", "salary_band": None, "keywords": []},
+        "claims": [{"id": "1", "category": "project", "label": "网关", "keywords": []}],
+        "evidence_from_training": [
+            {
+                "user_answer_excerpts": ["延迟从 200ms 降到 50ms"],
+                "source_claim_ids": ["1"],
+                "topic": "性能",
+                "focus_node": "Evidence",
+                "covered_nodes": ["Evidence"],
+                "attempt_id": "a",
+                "evaluation_flags": {},
+            }
+        ],
+        "constraints": [],
+    }
+    polished = "- 将延迟从 200ms 降到 50ms\n"
+    md, warnings = polish_or_template(draft=draft, polished=polished)
+    assert "50ms" in md
+    assert warnings == []

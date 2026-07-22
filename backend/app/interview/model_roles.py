@@ -7,7 +7,7 @@ from typing import Literal
 
 from app.config import settings
 
-InterviewModelPurpose = Literal["evaluate", "hint", "reflect", "embed"]
+InterviewModelPurpose = Literal["evaluate", "hint", "reflect", "embed", "resume_craft"]
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,13 @@ def resolve_model_role(purpose: InterviewModelPurpose) -> ModelRoleConfig:
             provider_hint=getattr(settings, "INTERVIEW_HINT_PROVIDER", "rules"),
             model_id=getattr(settings, "INTERVIEW_HINT_MODEL", "rules"),
             temperature=0.0,
+        )
+    if purpose == "resume_craft":
+        return ModelRoleConfig(
+            purpose=purpose,
+            provider_hint=getattr(settings, "INTERVIEW_RESUME_CRAFT_PROVIDER", "template"),
+            model_id=getattr(settings, "INTERVIEW_RESUME_CRAFT_MODEL", "template"),
+            temperature=0.3,
         )
     # evaluate: keyword rules by default; optional small model later
     return ModelRoleConfig(
