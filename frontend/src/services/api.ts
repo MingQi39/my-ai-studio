@@ -36,6 +36,314 @@ export function getJsonAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+export interface InterviewClaim {
+  id: string;
+  category: 'skill' | 'project' | 'role';
+  label: string;
+  keywords: string[];
+  status: 'candidate' | 'confirmed' | 'rejected';
+  created_at: string;
+}
+export interface ResumeCandidate {
+  category: 'skill' | 'project' | 'role';
+  label: string;
+  keywords: string[];
+}
+export interface InterviewTraining {
+  topic: string;
+  question: string;
+  atlas: string[];
+  route_nodes: string[];
+  missing_nodes: string[];
+  level: 'P5' | 'P6' | 'P7';
+  category: 'skill' | 'project' | 'role';
+  focus_node: string;
+  starter_topics?: string[];
+  target_role?: string | null;
+  target_level?: string | null;
+  salary_band?: string | null;
+}
+export interface InterviewProfile {
+  id: string;
+  target_role: string | null;
+  target_level: string | null;
+  salary_band: string | null;
+  keywords: string[];
+  updated_at: string;
+}
+export interface InterviewFeedback {
+  covered_nodes: string[];
+  missing_nodes: string[];
+  breakpoint: string | null;
+  hint: { node: string; recall: string; keywords: string; example: string } | null;
+  next_step: string;
+  complete: boolean;
+  deterministic?: { rule_version?: string; signals_hit?: Record<string, string[]> };
+  status?: 'ok' | 'degraded';
+  reason?: string | null;
+}
+export interface InterviewReviewCard {
+  id: string;
+  topic: string;
+  question: string;
+  answer: string;
+  missing_nodes: string[];
+  created_at: string;
+  status?: 'new' | 'learning' | 'reviewing' | 'deferred' | 'mastered' | 'invalidated';
+  attempt_id?: string | null;
+  last_reviewed_at?: string | null;
+  next_due_at?: string | null;
+  successful_recall_count?: number;
+  source_claim_ids?: string[];
+}
+
+export interface InterviewTrainingProgress {
+  goal: {
+    target_role: string | null;
+    target_level: string | null;
+    salary_band: string | null;
+    tier: 'low' | 'mid' | 'high';
+  };
+  coverage: {
+    covered_count: number;
+    total_count: number;
+    covered_topics: string[];
+    missing_topics: string[];
+    ratio: number;
+  };
+  route_depth: {
+    window_days: number;
+    committed_count: number;
+    tradeoff_hits: number;
+    evidence_hits: number;
+    tradeoff_rate: number;
+    evidence_rate: number;
+    avg_covered_nodes: number;
+  };
+  retention: {
+    total_cards: number;
+    due_count: number;
+    consolidated_count: number;
+    stuck_count: number;
+    healthy_ratio: number;
+  };
+  expectations: Array<{ id: string; label: string; detail: string; met: boolean }>;
+  next_step: string;
+  learning_path?: {
+    stages: Array<{
+      id: string;
+      title: string;
+      goal: string;
+      topics: string[];
+      primary_topic: string;
+      comic_url: string | null;
+      days_hint: string;
+      done: boolean;
+      relevant: boolean;
+    }>;
+    next_module: {
+      stage_id: string | null;
+      title: string;
+      topic: string;
+      goal: string;
+      comic_url: string | null;
+      reason: string;
+    };
+    done_count: number;
+    total_relevant: number;
+  } | null;
+  composite: {
+    score: number;
+    uncapped_score: number;
+    formula: string;
+    cap_reason: string | null;
+    components: { coverage: number; depth: number; retention: number };
+  };
+  weekly_trend: Array<{
+    week_start: string;
+    committed_count: number;
+    tradeoff_rate: number;
+    evidence_rate: number;
+  }>;
+  counted_rule: string;
+}
+
+export type AttemptStatus =
+  | 'open'
+  | 'answering'
+  | 'evaluated'
+  | 'reanswered'
+  | 'committed'
+  | 'abandoned'
+  | 'degraded';
+
+export interface InterviewAttempt {
+  id: string;
+  status: AttemptStatus;
+  topic: string;
+  question: string;
+  atlas: string[];
+  route_nodes: string[];
+  missing_nodes: string[];
+  level: 'P5' | 'P6' | 'P7';
+  category: 'skill' | 'project' | 'role';
+  focus_node: string;
+  goal_snapshot?: Record<string, string | null>;
+  source_claim_ids?: string[];
+  answers: { version: number; text: string; created_at: string }[];
+  evaluation: InterviewFeedback | null;
+  hint_level: number;
+  review_card_id?: string | null;
+  degraded_reason?: string | null;
+  resumed?: boolean;
+  starter_topics?: string[];
+  structure_hint?: string | null;
+  comic_url?: string | null;
+  training_mode?: 'standard' | 'project_sim';
+  created_at: string;
+  updated_at: string;
+}
+
+export async function extractResume(file: File): Promise<{ claims: ResumeCandidate[]; warning: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE_URL}/interview/resume/extract`, { method: 'POST', headers, body: form });
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || '简历解析失败');
+  return response.json();
+}
+
+export async function saveInterviewClaim(claim: ResumeCandidate): Promise<InterviewClaim> {
+  return request<InterviewClaim>('/interview/claims', { method: 'POST', body: JSON.stringify(claim) });
+}
+export async function confirmInterviewClaim(id: string): Promise<InterviewClaim> {
+  return request<InterviewClaim>(`/interview/claims/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'confirmed' }),
+  });
+}
+export async function rejectInterviewClaim(id: string): Promise<InterviewClaim> {
+  return request<InterviewClaim>(`/interview/claims/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'rejected' }),
+  });
+}
+export async function getInterviewProfile(): Promise<InterviewProfile> {
+  return request('/interview/profile');
+}
+export async function updateInterviewProfile(data: {
+  target_role?: string | null;
+  target_level?: string | null;
+  salary_band?: string | null;
+  keywords?: string[];
+}): Promise<InterviewProfile> {
+  return request('/interview/profile', { method: 'PUT', body: JSON.stringify(data) });
+}
+export async function saveReviewCard(input: {
+  topic: string;
+  question: string;
+  answer: string;
+  missing_nodes: string[];
+}): Promise<void> {
+  await request('/interview/review-cards', { method: 'POST', body: JSON.stringify(input) });
+}
+export async function listInterviewClaims(): Promise<InterviewClaim[]> {
+  return request('/interview/claims');
+}
+export async function getNextTraining(opts?: {
+  level?: 'P5' | 'P6' | 'P7';
+  topic?: string;
+}): Promise<InterviewTraining> {
+  const params = new URLSearchParams();
+  if (opts?.level) params.set('level', opts.level);
+  if (opts?.topic) params.set('topic', opts.topic);
+  const qs = params.toString();
+  return request(`/interview/training/next${qs ? `?${qs}` : ''}`);
+}
+export async function evaluateInterviewAnswer(input: {
+  answer: string;
+  topic: string;
+  question: string;
+  focus_node?: string;
+  level?: 'P5' | 'P6' | 'P7';
+}): Promise<InterviewFeedback> {
+  return request('/interview/training/evaluate', { method: 'POST', body: JSON.stringify(input) });
+}
+export async function getInterviewHint(node: string, level: number): Promise<{ level: string; content: string }> {
+  return request('/interview/training/hint', {
+    method: 'POST',
+    body: JSON.stringify({ node, level }),
+  });
+}
+export async function listReviewCards(opts?: { due?: boolean }): Promise<InterviewReviewCard[]> {
+  const qs = opts?.due ? '?due=true' : '';
+  return request(`/interview/review-cards${qs}`);
+}
+
+export async function getInterviewTrainingProgress(): Promise<InterviewTrainingProgress> {
+  return request('/interview/training/progress');
+}
+
+export async function getActiveInterviewAttempt(): Promise<InterviewAttempt | null> {
+  const data = await request<{ attempt: InterviewAttempt | null }>('/interview/training/attempts/active');
+  return data.attempt;
+}
+
+export async function createInterviewAttempt(opts?: {
+  level?: 'P5' | 'P6' | 'P7';
+  topic?: string;
+  exclude_questions?: string[];
+  exclude_topics?: string[];
+  mode?: 'standard' | 'project_sim';
+}): Promise<InterviewAttempt> {
+  return request('/interview/training/attempts', {
+    method: 'POST',
+    body: JSON.stringify({
+      level: opts?.level ?? null,
+      topic: opts?.topic ?? null,
+      exclude_questions: opts?.exclude_questions ?? [],
+      exclude_topics: opts?.exclude_topics ?? [],
+      mode: opts?.mode ?? 'standard',
+    }),
+  });
+}
+
+export async function submitInterviewAttemptAnswer(
+  attemptId: string,
+  input: { text: string; version: 1 | 2 },
+): Promise<{ attempt: InterviewAttempt; degraded: boolean }> {
+  return request(`/interview/training/attempts/${attemptId}/answers`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getInterviewAttemptHint(
+  attemptId: string,
+  level: number,
+): Promise<{ level: string; content: string }> {
+  return request(`/interview/training/attempts/${attemptId}/hints`, {
+    method: 'POST',
+    body: JSON.stringify({ level }),
+  });
+}
+
+export async function commitInterviewAttempt(attemptId: string): Promise<InterviewAttempt> {
+  return request(`/interview/training/attempts/${attemptId}/commit`, { method: 'POST', body: '{}' });
+}
+
+export async function abandonInterviewAttempt(
+  attemptId: string,
+  reason: 'skip_retry' | 'switch_topic' | 'change_question' = 'skip_retry',
+): Promise<InterviewAttempt> {
+  return request(`/interview/training/attempts/${attemptId}/abandon`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
 export const setToken = (token: string): void => {
   localStorage.setItem(TOKEN_KEY, token);
 };

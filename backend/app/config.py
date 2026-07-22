@@ -70,6 +70,24 @@ class Settings(BaseSettings):
     FITNESS_DEFAULT_TIMEZONE: str = "Asia/Shanghai"
     FITNESS_DEFAULT_CALORIE_GOAL: int = 1800
 
+    # Interview Navigator — RAG question bank (Ollama embeddings)
+    INTERVIEW_EMBEDDING_BASE_URL: str = "http://localhost:11434"
+    INTERVIEW_EMBEDDING_MODEL: str = "nomic-embed-text"
+    INTERVIEW_EMBEDDING_TIMEOUT: float = 60.0
+    INTERVIEW_RAG_TOP_K: int = 5
+    INTERVIEW_RAG_MIN_SCORE: float = 0.35
+    INTERVIEW_RAG_HYBRID: bool = True
+    INTERVIEW_RERANK_MODE: str = "lexical"  # lexical | none
+    INTERVIEW_EMBEDDING_BREAKER_FAILURES: int = 3
+    INTERVIEW_EMBEDDING_BREAKER_RECOVERY: int = 30
+    INTERVIEW_ROUTE_REFLECTION_LLM: bool = False
+    INTERVIEW_EVAL_PROVIDER: str = "rules"
+    INTERVIEW_EVAL_MODEL: str = "rules"
+    INTERVIEW_HINT_PROVIDER: str = "rules"
+    INTERVIEW_HINT_MODEL: str = "rules"
+    INTERVIEW_REFLECT_PROVIDER: str = "openai_compatible"
+    INTERVIEW_REFLECT_MODEL: str = "gpt-4o-mini"
+
     # Spider Agent (DeepAgents) — session artifacts live in Docker named volumes
     # Default slim is fine for static HTTP pages.
     # For JS-render escalation use e.g. mcr.microsoft.com/playwright/python:v1.61.0-jammy

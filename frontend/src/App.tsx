@@ -10,6 +10,7 @@ import { AuthPage } from './components/AuthPage';
 import { TravelPage } from './pages/TravelPage';
 import { FitnessPage } from './pages/FitnessPage';
 import { SpiderPage } from './pages/SpiderPage';
+import { InterviewPage } from './pages/InterviewPage';
 import { branding } from './features/travel/config/branding';
 import { fitnessBranding } from './features/fitness/config/branding';
 import { spiderBranding } from './features/spider/config/branding';
@@ -120,8 +121,11 @@ export default function App() {
   const isTravelRoute = location.pathname.startsWith('/travel');
   const isFitnessRoute = location.pathname.startsWith('/fitness');
   const isSpiderRoute = location.pathname.startsWith('/spider');
+  const isInterviewRoute = location.pathname.startsWith('/interview');
   const activeTab = isSpiderRoute
     ? 'spider-agent'
+    : isInterviewRoute
+      ? 'interview-agent'
     : isFitnessRoute
       ? 'fitness-agent'
       : isTravelRoute
@@ -393,6 +397,9 @@ export default function App() {
     } else if (tab === 'spider-agent') {
       navigate('/spider/chat');
       setIsControlPanelOpen(true);
+    } else if (tab === 'interview-agent') {
+      navigate('/interview');
+      setIsControlPanelOpen(false);
     } else if (tab === 'history') {
       navigate('/');
       setIsControlPanelOpen(true);
@@ -682,6 +689,7 @@ export default function App() {
             />
           }
         />
+        <Route path="/interview" element={<InterviewPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 

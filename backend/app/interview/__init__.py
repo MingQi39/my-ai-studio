@@ -1,0 +1,1 @@
+"""Interview Navigator domain module."""

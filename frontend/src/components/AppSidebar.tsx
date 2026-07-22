@@ -646,6 +646,14 @@ export function AppSidebar({
                 onClick={() => onTabChange('spider-agent')}
                 hasBadge
               />
+              <NavButton
+                icon={<Brain size={20} />}
+                label="面试导航"
+                id="interview-agent"
+                isActive={activeTab === 'interview-agent'}
+                onClick={() => onTabChange('interview-agent')}
+                hasBadge
+              />
             </>
           )}
         </div>

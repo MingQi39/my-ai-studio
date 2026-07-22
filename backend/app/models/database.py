@@ -49,6 +49,7 @@ class SessionType(str, enum.Enum):
     travel = "travel"
     fitness = "fitness"
     spider = "spider"
+    interview = "interview"
 
 
 class FitnessMealType(str, enum.Enum):
@@ -541,3 +542,160 @@ class FitnessDiaryEntry(Base, UUIDMixin, TimestampMixin):
     session_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class InterviewProfile(Base, UUIDMixin, TimestampMixin):
+    """User-controlled interview training profile and confirmed resume keywords."""
+
+    __tablename__ = "interview_profiles"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_interview_profiles_user_id"),)
+
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    target_role: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    target_level: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    salary_band: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    keywords: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+
+
+class InterviewClaim(Base, UUIDMixin, TimestampMixin):
+    """A resume-derived fact that remains a candidate until the user confirms it."""
+
+    __tablename__ = "interview_claims"
+    __table_args__ = (
+        Index("ix_interview_claims_profile_id", "profile_id"),
+        Index("ix_interview_claims_status", "status"),
+    )
+
+    profile_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("interview_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    keywords: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="candidate")
+
+
+class InterviewReviewCard(Base, UUIDMixin, TimestampMixin):
+    """A compact KAN review unit created after a low-input answer attempt."""
+
+    __tablename__ = "interview_review_cards"
+    __table_args__ = (Index("ix_interview_review_cards_profile_id", "profile_id"),)
+
+    profile_id: Mapped[str] = mapped_column(String(36), ForeignKey("interview_profiles.id", ondelete="CASCADE"), nullable=False)
+    topic: Mapped[str] = mapped_column(String(255), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    missing_nodes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="new")
+    attempt_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("interview_training_attempts.id", ondelete="SET NULL"), nullable=True
+    )
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    successful_recall_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_claim_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+
+
+class InterviewTrainingAttempt(Base, UUIDMixin, TimestampMixin):
+    """One question / one closed training loop (answer → breakpoint → retry)."""
+
+    __tablename__ = "interview_training_attempts"
+    __table_args__ = (
+        Index("ix_interview_attempts_profile_id", "profile_id"),
+        Index("ix_interview_attempts_status", "status"),
+    )
+
+    profile_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("interview_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    topic: Mapped[str] = mapped_column(String(255), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    level: Mapped[str] = mapped_column(String(10), nullable=False, default="P6")
+    focus_node: Mapped[str] = mapped_column(String(80), nullable=False)
+    route_nodes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    atlas: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    category: Mapped[str] = mapped_column(String(40), nullable=False, default="skill")
+    goal_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    source_claim_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    answers: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    evaluation: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    hint_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    review_card_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    degraded_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class InterviewQuestionSource(Base, UUIDMixin, TimestampMixin):
+    """Imported interview question bank document (e.g. Feishu wiki)."""
+
+    __tablename__ = "interview_question_sources"
+    __table_args__ = (UniqueConstraint("source_url", name="uq_interview_question_sources_url"),)
+
+    source_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class InterviewQuestionItem(Base, UUIDMixin, TimestampMixin):
+    """A normalized interview question stem from an external source."""
+
+    __tablename__ = "interview_question_items"
+    __table_args__ = (
+        Index("ix_interview_question_items_topic", "topic"),
+        Index("ix_interview_question_items_level", "level"),
+        Index("ix_interview_question_items_active", "is_active"),
+        UniqueConstraint("content_hash", name="uq_interview_question_items_hash"),
+    )
+
+    source_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("interview_question_sources.id", ondelete="CASCADE"), nullable=False
+    )
+    raw_question: Mapped[str] = mapped_column(Text, nullable=False)
+    normalized_question: Mapped[str] = mapped_column(Text, nullable=False)
+    topic: Mapped[str] = mapped_column(String(80), nullable=False)
+    level: Mapped[str] = mapped_column(String(10), nullable=False, default="P6")
+    source_section: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class InterviewQuestionEmbedding(Base, UUIDMixin, TimestampMixin):
+    """Vector embedding for a question item (Ollama / local)."""
+
+    __tablename__ = "interview_question_embeddings"
+    __table_args__ = (
+        UniqueConstraint("item_id", "model", name="uq_interview_question_emb_item_model"),
+        Index("ix_interview_question_embeddings_item_id", "item_id"),
+    )
+
+    item_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("interview_question_items.id", ondelete="CASCADE"), nullable=False
+    )
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    dimension: Mapped[int] = mapped_column(Integer, nullable=False)
+    vector: Mapped[list[float]] = mapped_column(JSON, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class InterviewSessionEvent(Base, UUIDMixin, TimestampMixin):
+    """Append-only audit events for interview training attempts."""
+
+    __tablename__ = "interview_session_events"
+    __table_args__ = (
+        UniqueConstraint("profile_id", "seq", name="uq_interview_events_profile_seq"),
+        Index("ix_interview_events_attempt_id", "attempt_id"),
+    )
+
+    profile_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("interview_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    attempt_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("interview_training_attempts.id", ondelete="SET NULL"), nullable=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    type: Mapped[str] = mapped_column(String(40), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
