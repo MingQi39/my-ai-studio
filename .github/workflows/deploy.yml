@@ -88,6 +88,13 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" <<'SSH'
               set -euo pipefail
               cd /home/ubuntu/my-ai-studio
-              sudo -n docker compose -f docker-compose.server.yml up -d --no-build
+              if ! sudo -n docker compose -f docker-compose.server.yml up -d --no-build; then
+                echo "::error::docker compose up failed; dumping diagnostics"
+                sudo -n docker compose -f docker-compose.server.yml ps -a || true
+                sudo -n docker compose -f docker-compose.server.yml logs --tail=200 backend || true
+                sudo -n docker inspect --format='{{.Name}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' \
+                  $(sudo -n docker compose -f docker-compose.server.yml ps -aq) 2>/dev/null || true
+                exit 1
+              fi
               sudo -n docker compose -f docker-compose.server.yml ps
           SSH
