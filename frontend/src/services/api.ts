@@ -334,6 +334,30 @@ export async function commitInterviewAttempt(attemptId: string): Promise<Intervi
   return request(`/interview/training/attempts/${attemptId}/commit`, { method: 'POST', body: '{}' });
 }
 
+export type ResumeEligibility = {
+  eligible: boolean;
+  reasons: string[];
+  stats: {
+    confirmed_claims: number;
+    confirmed_project_like_claims: number;
+    committed_attempts_7d: number;
+  };
+};
+
+export type ResumeCraftResult = {
+  markdown: string;
+  sources: { claim_ids: string[]; attempt_ids: string[] };
+  warnings: string[];
+};
+
+export async function getResumeEligibility(): Promise<ResumeEligibility> {
+  return request('/interview/resume/eligibility');
+}
+
+export async function craftInterviewResume(): Promise<ResumeCraftResult> {
+  return request('/interview/resume/craft', { method: 'POST', body: '{}' });
+}
+
 export async function abandonInterviewAttempt(
   attemptId: string,
   reason: 'skip_retry' | 'switch_topic' | 'change_question' = 'skip_retry',

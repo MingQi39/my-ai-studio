@@ -11,14 +11,17 @@ import {
 } from 'lucide-react';
 import {
   abandonInterviewAttempt,
+  ApiError,
   commitInterviewAttempt,
   confirmInterviewClaim,
+  craftInterviewResume,
   createInterviewAttempt,
   extractResume,
   getActiveInterviewAttempt,
   getInterviewAttemptHint,
   getInterviewProfile,
   getInterviewTrainingProgress,
+  getResumeEligibility,
   listInterviewClaims,
   listReviewCards,
   saveInterviewClaim,
@@ -29,7 +32,14 @@ import {
   type InterviewReviewCard,
   type InterviewTrainingProgress,
   type ResumeCandidate,
+  type ResumeEligibility,
 } from '@/services/api';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 type Phase = 'loading' | 'setup' | 'import' | 'confirm' | 'train';
 type Level = 'P5' | 'P6' | 'P7';
@@ -411,6 +421,11 @@ export function InterviewPage() {
   const [hasResumeClaims, setHasResumeClaims] = useState(false);
   const [progress, setProgress] = useState<InterviewTrainingProgress | null>(null);
   const [comicLightbox, setComicLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const [resumeEligibility, setResumeEligibility] = useState<ResumeEligibility | null>(null);
+  const [resumeMarkdown, setResumeMarkdown] = useState('');
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeWarn, setResumeWarn] = useState<string[] | null>(null);
   const recentQuestionsRef = useRef<string[]>([]);
 
   const resolvedRole = customRole.trim() || targetRole;
@@ -419,6 +434,11 @@ export function InterviewPage() {
   const refreshProgress = async () => {
     try {
       setProgress(await getInterviewTrainingProgress());
+    } catch {
+      // non-blocking
+    }
+    try {
+      setResumeEligibility(await getResumeEligibility());
     } catch {
       // non-blocking
     }
@@ -699,6 +719,34 @@ export function InterviewPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '完成闭环失败');
       setBusy(false);
+    }
+  };
+
+  const onCraftResume = async () => {
+    setResumeBusy(true);
+    setError(null);
+    try {
+      const result = await craftInterviewResume();
+      setResumeMarkdown(result.markdown);
+      setResumeWarn(result.warnings.length ? result.warnings : null);
+      setResumeOpen(true);
+      setResumeEligibility(await getResumeEligibility());
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        const detail = err.detail as unknown;
+        const reasons =
+          typeof detail === 'object' &&
+          detail !== null &&
+          'reasons' in detail &&
+          Array.isArray((detail as { reasons: unknown }).reasons)
+            ? ((detail as { reasons: string[] }).reasons)
+            : resumeEligibility?.reasons;
+        setError(reasons?.length ? reasons.join('；') : '暂不符合生成简历条件');
+      } else {
+        setError(err instanceof Error ? err.message : '生成简历失败');
+      }
+    } finally {
+      setResumeBusy(false);
     }
   };
 
@@ -1039,6 +1087,20 @@ export function InterviewPage() {
         >
           {hasResumeClaims ? '更新简历' : '补充简历'}
         </button>
+        <button
+          type="button"
+          disabled={!resumeEligibility?.eligible || !!busy || resumeBusy}
+          title={
+            resumeEligibility && !resumeEligibility.eligible
+              ? resumeEligibility.reasons.join('；')
+              : '基于已确认事实与训练证据生成 Markdown 简历'
+          }
+          onClick={() => void onCraftResume()}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+        >
+          {resumeBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          生成简历
+        </button>
       </header>
 
       {error && (
@@ -1298,6 +1360,27 @@ export function InterviewPage() {
           )}
         </Panel>
       </div>
+
+      <Dialog open={resumeOpen} onOpenChange={setResumeOpen}>
+        <DialogContent className="max-w-2xl border-[var(--border-color)] bg-[var(--bg-card)]">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--text-primary)]">生成的简历（Markdown）</DialogTitle>
+          </DialogHeader>
+          {resumeWarn?.length ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">{resumeWarn.join(' · ')}</p>
+          ) : null}
+          <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--border-color)] p-3 text-sm text-[var(--text-primary)]">
+            {resumeMarkdown}
+          </pre>
+          <button
+            type="button"
+            onClick={() => void navigator.clipboard.writeText(resumeMarkdown)}
+            className="inline-flex items-center justify-center rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          >
+            复制
+          </button>
+        </DialogContent>
+      </Dialog>
 
       {comicLightbox && (
         <div
