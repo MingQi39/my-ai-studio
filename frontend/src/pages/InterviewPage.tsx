@@ -473,6 +473,24 @@ export function InterviewPage() {
     }
   };
 
+  const goalStillMatches = (active: InterviewAttempt) => {
+    const snap = active.goal_snapshot || {};
+    const snapRole = (snap.target_role || '').trim();
+    const role = resolvedRole.trim();
+    if (snapRole && role && snapRole !== role) return false;
+
+    const snapLevelRaw = (snap.target_level || '').trim();
+    const normLevel = (v: string) =>
+      v === 'P5' ? '初级' : v === 'P6' ? '中级' : v === 'P7' ? '高级' : v;
+    const snapLevel = normLevel(snapLevelRaw);
+    const currentLevel = normLevel(difficulty);
+    if (snapLevel && currentLevel && snapLevel !== currentLevel) return false;
+
+    const snapSalary = (snap.salary_band || '').trim();
+    if (snapSalary && salaryBand && snapSalary !== salaryBand) return false;
+    return true;
+  };
+
   const enterTrain = async (
     nextLevel?: Level,
     topic?: string,
@@ -484,7 +502,8 @@ export function InterviewPage() {
       active &&
       mode === 'standard' &&
       (!topic || active.topic === topic) &&
-      (active.training_mode ?? 'standard') !== 'project_sim'
+      (active.training_mode ?? 'standard') !== 'project_sim' &&
+      goalStillMatches(active)
     ) {
       applyAttempt(active);
       const [review, claims] = await Promise.all([listReviewCards(), listInterviewClaims()]);
@@ -1078,8 +1097,25 @@ export function InterviewPage() {
         </button>
         <button
           type="button"
-          onClick={() => setPhase('setup')}
-          className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          disabled={!!busy}
+          onClick={() => {
+            void (async () => {
+              if (attempt && attempt.status !== 'committed' && attempt.status !== 'abandoned') {
+                try {
+                  await abandonInterviewAttempt(attempt.id, 'switch_topic');
+                } catch {
+                  // 409 if already terminal — still leave train UI
+                }
+              }
+              setAttempt(null);
+              setFeedback(null);
+              setAnswer('');
+              setHintText(null);
+              recentQuestionsRef.current = [];
+              setPhase('setup');
+            })();
+          }}
+          className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
         >
           改目标
         </button>

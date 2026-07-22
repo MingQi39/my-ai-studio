@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.interview.attempt_fsm import (
     ACTIVE_STATUSES,
     RULE_VERSION,
+    active_attempt_matches_goal,
     after_answer_status,
     can_abandon,
     can_commit,
@@ -540,7 +541,17 @@ class InterviewService:
         profile = await self.get_or_create_profile(user_id)
         active = await self.get_active_attempt(user_id)
         if active is not None:
-            return active.model_copy(update={"resumed": True})
+            if active_attempt_matches_goal(
+                active.goal_snapshot,
+                target_role=profile.target_role,
+                target_level=profile.target_level,
+                salary_band=getattr(profile, "salary_band", None),
+            ):
+                return active.model_copy(update={"resumed": True})
+            # Profile goal changed (e.g. 全栈 → AI 应用工程) — drop stale attempt.
+            await self.abandon_attempt(
+                user_id, active.id, AbandonAttemptRequest(reason="switch_topic")
+            )
 
         data = data or CreateAttemptRequest()
         mode = data.mode or "standard"
