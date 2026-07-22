@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Protocol, Sequence
 
-from app.interview.training import NODE_HINTS, ROUTE_NODES, hint_for
+from app.interview.training import NODE_HINTS, ROUTE_NODES, hint_for, route_node_label
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ def merge_rule_and_reflection(rule: dict[str, Any], reflection: RouteReflection)
         meta = NODE_HINTS.get(breakpoint, {})
         hint = {
             "node": breakpoint,
-            "recall": meta.get("recall", f"补上 {breakpoint}"),
+            "recall": meta.get("recall", f"补上「{route_node_label(breakpoint)}」"),
             "keywords": meta.get("keywords", ""),
             "example": meta.get("example", ""),
         }
@@ -205,7 +205,7 @@ def merge_rule_and_reflection(rule: dict[str, Any], reflection: RouteReflection)
     out["hint"] = hint
     out["complete"] = len(missing) == 0
     out["next_step"] = (
-        f"用一句话补上「{breakpoint}」节点，然后重答。"
+        f"用一句话补上「{route_node_label(breakpoint)}」，然后重答。"
         if breakpoint
         else str(rule.get("next_step") or "路径已基本走通。")
     )

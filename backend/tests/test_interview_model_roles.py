@@ -6,7 +6,9 @@ from app.interview.rerank import lexical_rerank
 
 def test_resolve_model_roles_defaults():
     assert resolve_model_role("evaluate").model_id == "rules"
-    assert resolve_model_role("hint").provider_hint == "rules"
+    hint = resolve_model_role("hint")
+    assert hint.provider_hint == "openai_compatible"
+    assert hint.model_id == "gpt-4o-mini"
     assert resolve_model_role("embed").provider_hint == "ollama"
     reflect = resolve_model_role("reflect")
     assert reflect.temperature == 0.1

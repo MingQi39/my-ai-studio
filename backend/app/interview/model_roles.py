@@ -37,9 +37,9 @@ def resolve_model_role(purpose: InterviewModelPurpose) -> ModelRoleConfig:
     if purpose == "hint":
         return ModelRoleConfig(
             purpose=purpose,
-            provider_hint=getattr(settings, "INTERVIEW_HINT_PROVIDER", "rules"),
-            model_id=getattr(settings, "INTERVIEW_HINT_MODEL", "rules"),
-            temperature=0.0,
+            provider_hint=getattr(settings, "INTERVIEW_HINT_PROVIDER", "openai_compatible"),
+            model_id=getattr(settings, "INTERVIEW_HINT_MODEL", "gpt-4o-mini"),
+            temperature=0.2,
         )
     if purpose == "resume_craft":
         return ModelRoleConfig(

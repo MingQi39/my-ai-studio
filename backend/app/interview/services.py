@@ -55,6 +55,12 @@ from app.interview.resume_craft import (
     check_eligibility,
     polish_or_template,
 )
+from app.interview.contextual_hint import (
+    build_hint_messages,
+    has_submitted_evaluation,
+    latest_answer_text,
+    resolve_contextual_hint,
+)
 from app.interview.training import (
     build_training_prompt,
     evaluate_answer,
@@ -703,20 +709,117 @@ class InterviewService:
         attempt = await self._get_owned_attempt(user_id, attempt_id)
         if attempt.status not in ACTIVE_STATUSES:
             raise HTTPException(status_code=409, detail="Attempt is terminal")
-        node = attempt.focus_node
-        if attempt.evaluation and attempt.evaluation.get("breakpoint"):
-            node = str(attempt.evaluation["breakpoint"])
+        answers = list(attempt.answers or [])
+        evaluation = attempt.evaluation if isinstance(attempt.evaluation, dict) else None
         level = min(max(data.level, 1), 4)
-        payload = hint_for(node, level)
+        post_submit = has_submitted_evaluation(answers=answers, evaluation=evaluation)
+        if post_submit and evaluation is not None:
+            node = str(evaluation.get("breakpoint") or attempt.focus_node or "Position")
+            covered = [str(x) for x in (evaluation.get("covered_nodes") or [])]
+            missing = [str(x) for x in (evaluation.get("missing_nodes") or [])]
+            breakpoint = str(evaluation.get("breakpoint") or "") or None
+            answer_text = latest_answer_text(answers)
+        else:
+            node = str(attempt.focus_node or "Position")
+            covered = []
+            missing = []
+            breakpoint = None
+            answer_text = ""
+
+        llm_text = await self._maybe_contextual_hint_llm(
+            topic=str(attempt.topic),
+            question=str(attempt.question),
+            answer=answer_text,
+            breakpoint=breakpoint,
+            covered_nodes=covered,
+            missing_nodes=missing,
+            level=level,
+            focus_node=str(attempt.focus_node or "Position"),
+        )
+        payload, source = resolve_contextual_hint(
+            topic=str(attempt.topic),
+            node=node,
+            level=level,
+            llm_text=llm_text,
+            question=str(attempt.question),
+        )
         attempt.hint_level = level
         await self._append_event(
             attempt.profile_id,
             attempt.id,
             "hint_shown",
-            {"level": level, "node": node},
+            {
+                "level": level,
+                "node": node,
+                "source": source,
+                "mode": "post_submit" if post_submit else "pre_submit",
+            },
         )
         await self.db.commit()
         return HintResponse(level=payload["level"], content=payload["content"])
+
+    async def _maybe_contextual_hint_llm(
+        self,
+        *,
+        topic: str,
+        question: str,
+        answer: str,
+        breakpoint: str | None,
+        covered_nodes: list[str],
+        missing_nodes: list[str],
+        level: int,
+        focus_node: str | None = None,
+    ) -> str | None:
+        role = resolve_model_role("hint")
+        if role.provider_hint == "rules":
+            return None
+        base_url = (
+            (settings.INTERVIEW_HINT_BASE_URL or "").rstrip("/")
+            or (settings.INTERVIEW_RESUME_CRAFT_BASE_URL or "").rstrip("/")
+        )
+        if not base_url:
+            return None
+        url = f"{base_url}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        api_key = settings.INTERVIEW_HINT_API_KEY or settings.INTERVIEW_RESUME_CRAFT_API_KEY or ""
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        messages = build_hint_messages(
+            topic=topic,
+            question=question,
+            answer=answer,
+            breakpoint=breakpoint,
+            covered_nodes=covered_nodes,
+            missing_nodes=missing_nodes,
+            level=level,
+            focus_node=focus_node,
+        )
+        payload = {
+            "model": role.model_id,
+            "temperature": role.temperature,
+            "messages": messages,
+        }
+        try:
+            # trust_env=False: avoid corporate/system HTTP(S)_PROXY 403 on DeepSeek
+            async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+            message = data["choices"][0]["message"]
+            content = message.get("content")
+            if not isinstance(content, str) or not content.strip():
+                # some reasoning models may park text elsewhere
+                alt = message.get("reasoning_content")
+                content = alt if isinstance(alt, str) else ""
+            if not isinstance(content, str) or not content.strip():
+                return None
+            return content.strip()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "contextual_hint_llm_failed",
+                extra={"error": f"{type(exc).__name__}: {exc}"},
+            )
+            return None
 
     async def commit_attempt(self, user_id: UUID, attempt_id: UUID) -> TrainingAttemptResponse:
         attempt = await self._get_owned_attempt(user_id, attempt_id)

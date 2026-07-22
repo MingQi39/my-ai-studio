@@ -696,8 +696,11 @@ export function InterviewPage() {
 
   const requestHint = async () => {
     if (!attempt) return;
-    const next = Math.min(hintLevel + 1, 4);
+    // After L4, allow re-fetching L4 (fresh wording) instead of locking the button forever —
+    // especially important after refresh when attempt.hint_level is already 4.
+    const next = hintLevel >= 4 ? 4 : Math.min(hintLevel + 1, 4);
     setBusy('hinting');
+    setError(null);
     try {
       const hint = await getInterviewAttemptHint(attempt.id, next);
       setHintLevel(next);
@@ -1308,12 +1311,23 @@ export function InterviewPage() {
                 )}
                 <button
                   type="button"
-                  disabled={!!busy || hintLevel >= 4 || !attempt || attempt.status === 'committed'}
+                  disabled={!!busy || !attempt || attempt.status === 'committed'}
+                  title={
+                    hintLevel >= 4
+                      ? '已到最深层，可再点一次换一版提示'
+                      : feedback
+                        ? '基于本题与你的答卷给出最小提示'
+                        : '卡住了也可以点：先按本题给回忆方向（提交答卷后会更贴你的断点）'
+                  }
                   onClick={() => void requestHint()}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)]"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)] disabled:opacity-50"
                 >
                   <Lightbulb className="h-4 w-4" />
-                  {hintLevel === 0 ? '给我提示' : `再深一层 (${hintLevel}/4)`}
+                  {hintLevel === 0
+                    ? '给我提示'
+                    : hintLevel >= 4
+                      ? '再看提示'
+                      : `再深一层 (${hintLevel}/4)`}
                 </button>
               </div>
               {attempt?.status === 'degraded' && (

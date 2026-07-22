@@ -83,8 +83,10 @@ class Settings(BaseSettings):
     INTERVIEW_ROUTE_REFLECTION_LLM: bool = False
     INTERVIEW_EVAL_PROVIDER: str = "rules"
     INTERVIEW_EVAL_MODEL: str = "rules"
-    INTERVIEW_HINT_PROVIDER: str = "rules"
-    INTERVIEW_HINT_MODEL: str = "rules"
+    INTERVIEW_HINT_PROVIDER: str = "openai_compatible"  # openai_compatible | rules
+    INTERVIEW_HINT_MODEL: str = "gpt-4o-mini"
+    INTERVIEW_HINT_BASE_URL: str = ""  # falls back to INTERVIEW_RESUME_CRAFT_BASE_URL
+    INTERVIEW_HINT_API_KEY: str = ""  # falls back to INTERVIEW_RESUME_CRAFT_API_KEY
     INTERVIEW_REFLECT_PROVIDER: str = "openai_compatible"
     INTERVIEW_REFLECT_MODEL: str = "gpt-4o-mini"
     INTERVIEW_RESUME_CRAFT_PROVIDER: str = "template"  # template | openai_compatible

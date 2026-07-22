@@ -90,5 +90,7 @@ def test_evaluate_complete_path():
 
 
 def test_progressive_hint_levels():
-    assert "断点" in hint_for("Trade-off", 1)["content"]
+    l1 = hint_for("Trade-off", 1)["content"]
+    assert "方案取舍" in l1
+    assert "Trade-off" not in l1
     assert "为什么" in hint_for("Trade-off", 2)["content"]

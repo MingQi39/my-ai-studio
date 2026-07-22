@@ -21,6 +21,15 @@ NODE_SIGNALS: dict[str, tuple[str, ...]] = {
     "Evidence": ("项目", "线上", "生产", "指标", "延迟", "我们", "我负责", "证据", "evidence", "latency", "prod"),
 }
 
+# Chinese labels for UI hints (English keys stay on the Answer Route map).
+NODE_LABELS_ZH: dict[str, str] = {
+    "Position": "解决什么问题",
+    "Principle": "底层原理",
+    "Mechanism": "怎么实现",
+    "Trade-off": "方案取舍",
+    "Evidence": "项目证据",
+}
+
 NODE_HINTS: dict[str, dict[str, str]] = {
     "Position": {
         "recall": "它首先解决的是什么通信/业务问题？",
@@ -48,6 +57,10 @@ NODE_HINTS: dict[str, dict[str, str]] = {
         "example": "只说你确认过的事实；没有指标就明确说没有。",
     },
 }
+
+
+def route_node_label(node: str) -> str:
+    return NODE_LABELS_ZH.get(node, node)
 
 ATLAS_BY_SKILL: dict[str, list[str]] = {
     "SSE": ["HTTP", "streaming", "SSE", "reconnect"],
@@ -394,7 +407,7 @@ def evaluate_answer(answer: str, focus_node: str | None = None) -> dict[str, obj
         "breakpoint": breakpoint,
         "hint": hint,
         "next_step": (
-            f"用一句话补上「{breakpoint}」节点，然后重答。"
+            f"用一句话补上「{route_node_label(breakpoint)}」，然后重答。"
             if breakpoint
             else "路径已基本走通。可完成闭环，或提高一层难度再练。"
         ),
@@ -405,10 +418,14 @@ def evaluate_answer(answer: str, focus_node: str | None = None) -> dict[str, obj
 
 def hint_for(node: str, level: int = 1) -> dict[str, str]:
     meta = NODE_HINTS.get(node, {})
+    label = route_node_label(node)
     if level <= 1:
-        return {"level": "1", "content": f"当前断点节点：{node}"}
+        return {"level": "1", "content": f"先补：{label}"}
     if level == 2:
-        return {"level": "2", "content": meta.get("recall", f"回想：{node} 该怎么讲？")}
+        return {"level": "2", "content": meta.get("recall", f"回想：{label} 该怎么讲？")}
     if level == 3:
-        return {"level": "3", "content": f"关键词：{meta.get('keywords', node)}"}
-    return {"level": "4", "content": meta.get("example", f"组织方式：先点名 {node}，再用一句项目事实收尾。")}
+        return {"level": "3", "content": f"关键词：{meta.get('keywords', label)}"}
+    return {
+        "level": "4",
+        "content": meta.get("example", f"组织方式：先讲清「{label}」，再用一句项目事实收尾。"),
+    }
