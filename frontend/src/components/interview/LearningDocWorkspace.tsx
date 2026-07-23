@@ -14,7 +14,7 @@ import remarkGfm from 'remark-gfm';
 import { ExternalLink, Loader2, MessageSquareQuote, Send, X } from 'lucide-react';
 import { useIsMobile } from '@/components/ui/use-mobile';
 import { cn } from '@/components/ui/utils';
-import { askInterviewLearningDoc, type TodayLearningDoc } from '@/services/api';
+import { askInterviewLearningDoc, resolvePublicAssetUrl, type TodayLearningDoc } from '@/services/api';
 
 const QUICK_ASKS = [
   '这段是什么意思？',
@@ -551,7 +551,7 @@ export function LearningDocWorkspace({
       )}
       {doc.comic_url && (
         <img
-          src={doc.comic_url}
+          src={resolvePublicAssetUrl(doc.comic_url) || doc.comic_url}
           alt={`${doc.topic} 概念图`}
           className="mt-4 max-h-48 w-full max-w-full rounded-xl border border-[var(--border-color)] object-cover object-top"
         />

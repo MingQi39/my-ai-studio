@@ -45,6 +45,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // 本地 file:// UI 请求线上 API；否则会卡在浏览器 CORS（Origin: null）
+      webSecurity: isDev,
     },
   });
 

@@ -72,6 +72,7 @@ import {
   type PushFrequency,
   type ResumeCandidate,
   type ResumeEligibility,
+  resolvePublicAssetUrl,
 } from '@/services/api';
 import { PUSH_FREQUENCY_OPTIONS, pushInterviewNow, requestInterviewPushPermission, useInterviewPush } from '@/hooks/useInterviewPush';
 import { getPlatform } from '@/platform';
@@ -594,7 +595,10 @@ function AtlasRailBody({
   onToggleExtras?: () => void;
   compactExtras?: boolean;
 }) {
-  const comicBlock = training.comic_url ? (
+  const comicSrc = training.comic_url
+    ? resolvePublicAssetUrl(training.comic_url) || training.comic_url
+    : null;
+  const comicBlock = comicSrc ? (
     comicCollapsed ? (
       <button
         type="button"
@@ -618,11 +622,11 @@ function AtlasRailBody({
         <button
           type="button"
           className="block w-full overflow-hidden rounded-xl border border-[var(--border-color)] text-left"
-          onClick={() => onOpenComic(training.comic_url!, `${training.topic} 概念图`)}
+          onClick={() => onOpenComic(comicSrc, `${training.topic} 概念图`)}
           title="点击查看大图"
         >
           <img
-            src={training.comic_url}
+            src={comicSrc}
             alt={`${training.topic} 概念图`}
             className="max-h-36 w-full object-cover object-top"
           />

@@ -79,7 +79,7 @@
     "dev": "vite",
     "dev:desktop": "env -u ELECTRON_RUN_AS_NODE ELECTRON=1 vite",
     "build": "vite build",
-    "build:desktop": "ELECTRON=1 vite build",
+    "build:desktop": "ELECTRON=1 VITE_API_BASE_URL=http://43.143.251.51:8081/api/v1 vite build",
     "pack:desktop": "npm run build:desktop && electron-builder --dir",
     "dist:desktop": "npm run build:desktop && electron-builder"
   },

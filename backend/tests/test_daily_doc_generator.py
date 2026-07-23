@@ -64,6 +64,9 @@ async def test_template_ignores_mismatched_bank_stems(monkeypatch):
     assert "自注意力" in doc.markdown_body
     assert "用 LLM 给 LLM 打分" not in doc.markdown_body
     assert "幻觉有哪些类型" not in doc.markdown_body
+    assert "](http" in doc.markdown_body
+    assert "**对照**" in doc.markdown_body
+    assert "打开下方参考链接中与「Transformer" not in doc.markdown_body
 
 
 def test_handbooks_for_rag_topic():

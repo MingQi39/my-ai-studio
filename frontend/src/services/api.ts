@@ -5,6 +5,7 @@
  */
 
 import { SSEClient } from '@/lib/sseClient';
+import { resolvePublicAssetUrlWithOrigin } from '@/services/publicAssetUrl';
 
 // API 基础配置 - 根据当前访问地址自动适配后端地址
 export function getApiBaseUrl(): string {
@@ -21,8 +22,9 @@ export function getApiBaseUrl(): string {
     return `${window.location.origin}/api/v1`;
   }
 
+  // Electron 生产包加载本地 file://，必须用绝对线上 API（开发态走上面 DEV 分支）
   if (import.meta.env.VITE_IS_ELECTRON === 'true') {
-    return 'http://127.0.0.1:10011/api/v1';
+    return 'http://43.143.251.51:8081/api/v1';
   }
 
   const hostname = window.location.hostname;
@@ -31,6 +33,18 @@ export function getApiBaseUrl(): string {
 
 function resolveApiBaseUrl(): string {
   return getApiBaseUrl();
+}
+
+/** Public static assets under frontend `/public` (comics, etc.). Safe for Electron file://. */
+export function resolvePublicAssetUrl(path: string | null | undefined): string | null {
+  if (typeof window === 'undefined') {
+    return resolvePublicAssetUrlWithOrigin(path, { apiBase: getApiBaseUrl() });
+  }
+  return resolvePublicAssetUrlWithOrigin(path, {
+    pageOrigin: window.location.origin,
+    pageProtocol: window.location.protocol,
+    apiBase: getApiBaseUrl(),
+  });
 }
 
 // Token 管理
