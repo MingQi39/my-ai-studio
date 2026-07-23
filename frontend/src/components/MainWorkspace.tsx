@@ -184,6 +184,8 @@ export function MainWorkspace({
             variant="ghost"
             size="icon"
             onClick={toggleSidebar}
+            aria-label={isSidebarOpen ? t("sidebar.collapse") : t("sidebar.expand")}
+            title={isSidebarOpen ? t("sidebar.collapse") : t("sidebar.expand")}
             className={`text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md transition-transform ${!isSidebarOpen ? "rotate-180" : ""}`}
           >
             <Menu size={20} />

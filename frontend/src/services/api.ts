@@ -9,13 +9,29 @@ import { SSEClient } from '@/lib/sseClient';
 // API 基础配置 - 根据当前访问地址自动适配后端地址
 export function getApiBaseUrl(): string {
   if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '');
+    const base = import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '');
+    if (base.startsWith('/') && typeof window !== 'undefined') {
+      return `${window.location.origin}${base}`;
+    }
+    return base;
   }
+
+  // 开发模式（Web / Electron）走 Vite 同源代理，避免跨域与端口不一致
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    return `${window.location.origin}/api/v1`;
+  }
+
+  if (import.meta.env.VITE_IS_ELECTRON === 'true') {
+    return 'http://127.0.0.1:10011/api/v1';
+  }
+
   const hostname = window.location.hostname;
   return `http://${hostname}:10011/api/v1`;
 }
 
-const API_BASE_URL = getApiBaseUrl();
+function resolveApiBaseUrl(): string {
+  return getApiBaseUrl();
+}
 
 // Token 管理
 const TOKEN_KEY = 'auth_token';
@@ -68,6 +84,7 @@ export interface InterviewProfile {
   target_role: string | null;
   target_level: string | null;
   salary_band: string | null;
+  target_deadline: string | null;
   keywords: string[];
   updated_at: string;
 }
@@ -210,8 +227,30 @@ export async function extractResume(file: File): Promise<{ claims: ResumeCandida
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${API_BASE_URL}/interview/resume/extract`, { method: 'POST', headers, body: form });
+  const response = await fetch(`${resolveApiBaseUrl()}/interview/resume/extract`, { method: 'POST', headers, body: form });
   if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || '简历解析失败');
+  return response.json();
+}
+
+export async function getInterviewSttStatus(): Promise<{ enabled: boolean }> {
+  return request<{ enabled: boolean }>('/interview/stt/status');
+}
+
+export async function transcribeInterviewAudio(blob: Blob, language = 'zh'): Promise<{ text: string }> {
+  const form = new FormData();
+  const filename = blob.type.includes('wav') ? 'answer.wav' : 'answer.webm';
+  form.append('file', blob, filename);
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(
+    `${resolveApiBaseUrl()}/interview/transcribe?language=${encodeURIComponent(language)}`,
+    { method: 'POST', headers, body: form },
+  );
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => null))?.detail;
+    throw new Error(typeof detail === 'string' ? detail : '语音识别失败');
+  }
   return response.json();
 }
 
@@ -237,9 +276,191 @@ export async function updateInterviewProfile(data: {
   target_role?: string | null;
   target_level?: string | null;
   salary_band?: string | null;
+  target_deadline?: string | null;
   keywords?: string[];
 }): Promise<InterviewProfile> {
   return request('/interview/profile', { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export type PlanTaskType = 'train' | 'review' | 'consolidate';
+
+export interface PlanDayTask {
+  date: string;
+  task_type: PlanTaskType;
+  stage_id: string | null;
+  title: string;
+  topic: string;
+  goal: string;
+  message: string;
+  doc_title?: string | null;
+  section_title?: string | null;
+  reading_bullets?: string[];
+  comic_url?: string | null;
+  unit_keys?: string[];
+  units_packed?: number;
+  learning_status?: 'pending' | 'completed';
+  completed_at?: string | null;
+}
+
+export interface TodayLearningDoc {
+  doc_title: string;
+  section_title: string;
+  topic: string;
+  reading_bullets: string[];
+  comic_url: string | null;
+  bank_excerpts: string[];
+  markdown_body?: string | null;
+  today_goal?: string | null;
+  practice_task?: string | null;
+  source_links?: { title: string; url: string }[];
+  generated_by?: 'llm' | 'template';
+  format_version?: string;
+}
+
+export interface InterviewLearningPlan {
+  deadline: string | null;
+  start_date: string | null;
+  total_days: number;
+  days: PlanDayTask[];
+  summary: string;
+  feasible: boolean;
+  default_span_days: number | null;
+  plan_generated_at: string | null;
+  days_remaining: number | null;
+  max_units_per_day?: number | null;
+}
+
+export type PushFrequency = 'daily' | 'weekdays' | 'weekends';
+
+export interface InterviewTodayPlan {
+  date: string;
+  tasks: PlanDayTask[];
+  due_review_count: number;
+  push_message: string | null;
+  has_plan: boolean;
+  push_due_today: boolean;
+  learning_doc: TodayLearningDoc | null;
+  active_date?: string | null;
+  learning_status?: 'pending' | 'completed' | null;
+  is_backlog?: boolean;
+  incomplete_count?: number;
+  units_packed?: number;
+}
+
+export interface LearningDocHistoryItem {
+  date: string;
+  topic: string;
+  title: string;
+  section_title: string | null;
+  task_type: PlanDayTask['task_type'];
+  has_doc: boolean;
+  generated_by: 'llm' | 'template' | null;
+  is_today: boolean;
+  learning_status?: 'pending' | 'completed';
+  is_active?: boolean;
+  units_packed?: number;
+}
+
+export interface LearningDocHistory {
+  items: LearningDocHistoryItem[];
+  has_plan: boolean;
+}
+
+export interface LearningDocByDate {
+  date: string;
+  learning_doc: TodayLearningDoc;
+  task: PlanDayTask | null;
+}
+
+export interface LearningDayStatusResult {
+  date: string;
+  learning_status: 'pending' | 'completed';
+  completed_at: string | null;
+  active_date: string | null;
+  incomplete_count: number;
+}
+
+export interface InterviewPushSettings {
+  push_enabled: boolean;
+  push_time: string;
+  push_timezone: string;
+  push_frequency: PushFrequency;
+  target_deadline: string | null;
+  last_push_date: string | null;
+}
+
+export async function getInterviewLearningPlan(): Promise<InterviewLearningPlan> {
+  return request('/interview/plan');
+}
+
+export async function regenerateInterviewLearningPlan(): Promise<InterviewLearningPlan> {
+  return request('/interview/plan/generate', { method: 'POST', body: '{}' });
+}
+
+export async function getInterviewTodayPlan(opts?: {
+  refresh?: boolean;
+}): Promise<InterviewTodayPlan> {
+  const qs = opts?.refresh ? '?refresh=true' : '';
+  return request(`/interview/plan/today${qs}`);
+}
+
+export async function listInterviewLearningDocs(): Promise<LearningDocHistory> {
+  return request('/interview/plan/docs');
+}
+
+export async function getInterviewLearningDocByDate(
+  isoDate: string,
+  opts?: { refresh?: boolean },
+): Promise<LearningDocByDate> {
+  const qs = opts?.refresh ? '?refresh=true' : '';
+  return request(`/interview/plan/docs/${encodeURIComponent(isoDate)}${qs}`);
+}
+
+export async function setInterviewLearningDayStatus(
+  isoDate: string,
+  status: 'pending' | 'completed' = 'completed',
+): Promise<LearningDayStatusResult> {
+  return request(`/interview/plan/docs/${encodeURIComponent(isoDate)}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function askInterviewLearningDoc(input: {
+  quote: string;
+  question?: string;
+  topic?: string | null;
+  section_title?: string | null;
+  doc_date?: string | null;
+}): Promise<{
+  answer: string;
+  quote: string;
+  question: string;
+  generated_by: 'llm' | 'template';
+}> {
+  return request('/interview/plan/docs/ask', {
+    method: 'POST',
+    body: JSON.stringify({
+      quote: input.quote,
+      question: input.question || '',
+      topic: input.topic ?? null,
+      section_title: input.section_title ?? null,
+      doc_date: input.doc_date ?? null,
+    }),
+  });
+}
+
+export async function getInterviewPushSettings(): Promise<InterviewPushSettings> {
+  return request('/interview/push-settings');
+}
+
+export async function updateInterviewPushSettings(data: {
+  push_enabled?: boolean;
+  push_time?: string;
+  push_timezone?: string;
+  push_frequency?: PushFrequency;
+}): Promise<InterviewPushSettings> {
+  return request('/interview/push-settings', { method: 'PUT', body: JSON.stringify(data) });
 }
 export async function saveReviewCard(input: {
   topic: string;
@@ -527,7 +748,7 @@ async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  const url = `${resolveApiBaseUrl()}${endpoint}`;
 
   const response = await fetch(url, {
     ...options,
@@ -943,7 +1164,7 @@ export function startStreamChat(
   };
 
   client = new SSEClient<ChatStreamChunk>({
-    url: `${API_BASE_URL}/chat/stream`,
+    url: `${resolveApiBaseUrl()}/chat/stream`,
     headers: getJsonAuthHeaders(),
     body: JSON.stringify(request),
     onEvent: (chunk) => {
@@ -1042,7 +1263,7 @@ export function startResumeStream(
   };
 
   const client = new SSEClient<ChatStreamChunk>({
-    url: `${API_BASE_URL}/chat/stream-resume/${sessionId}`,
+    url: `${resolveApiBaseUrl()}/chat/stream-resume/${sessionId}`,
     method: 'GET',
     headers: getJsonAuthHeaders(),
     onEvent: (chunk) => {
@@ -1099,7 +1320,7 @@ export function startRetryStreamChat(
   };
 
   const client = new SSEClient<ChatStreamChunk>({
-    url: `${API_BASE_URL}/chat/retry/${sessionId}`,
+    url: `${resolveApiBaseUrl()}/chat/retry/${sessionId}`,
     method: 'POST',
     headers: getJsonAuthHeaders(),
     body: JSON.stringify({ ...request, session_id: sessionId, message: '', skip_persist_user_message: true }),
@@ -1174,7 +1395,7 @@ export async function uploadFile(file: File): Promise<FileUploadResponse> {
     throw new Error('Not authenticated');
   }
 
-  const response = await fetch(`${API_BASE_URL}/files/upload`, {
+  const response = await fetch(`${resolveApiBaseUrl()}/files/upload`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,

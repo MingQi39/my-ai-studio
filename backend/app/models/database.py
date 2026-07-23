@@ -556,7 +556,15 @@ class InterviewProfile(Base, UUIDMixin, TimestampMixin):
     target_role: Mapped[str | None] = mapped_column(String(120), nullable=True)
     target_level: Mapped[str | None] = mapped_column(String(80), nullable=True)
     salary_band: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    target_deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     keywords: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    push_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    push_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    push_timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Asia/Shanghai")
+    push_frequency: Mapped[str] = mapped_column(String(20), nullable=False, default="weekdays")
+    learning_plan: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    plan_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_push_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class InterviewClaim(Base, UUIDMixin, TimestampMixin):

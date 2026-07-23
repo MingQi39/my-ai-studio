@@ -85,7 +85,9 @@
     "deleteSessionTitle": "删除会话",
     "deleteSessionMessage": "确定要删除这个会话吗？删除后将无法恢复。",
     "sessionDeleted": "会话已删除",
-    "deleteFailed": "删除会话失败"
+    "deleteFailed": "删除会话失败",
+    "collapse": "收起侧边栏",
+    "expand": "展开侧边栏"
   },
   "workspace": {
     "newChat": "新对话",
@@ -624,5 +626,34 @@
       "downloadFailed": "下载失败",
       "download": "下载"
     }
+  },
+  "interviewNav": {
+    "settings": "设置",
+    "settingsHint": "提醒会自动保存。修改岗位/难度/薪资后请点「应用目标」。关闭抽屉会丢弃未应用的草稿。",
+    "applyGoal": "应用目标",
+    "applyDeadline": "应用截止日期",
+    "generateQuestion": "生成面试题",
+    "switchQuestion": "换一题",
+    "goalChangedTitle": "目标已更改",
+    "goalChangedBody": "将按新目标出新题，当前未完成的练习会被放弃。已提交的进度不受影响。",
+    "applyGoalNow": "立刻换题",
+    "applyGoalLater": "稍后",
+    "deadlineTitle": "更新日期并重排学习计划？",
+    "deadlineBody": "将按新截止日期重排未完成学习日；已完成的学习日会保留。当前练习不受影响。",
+    "deadlineConfirm": "保存并重排",
+    "deadlineCancel": "取消",
+    "switchTitle": "换一题？",
+    "switchBody": "将放弃当前未完成的练习并抽取同主题新题。已提交进度不受影响。",
+    "switchConfirm": "确认换题",
+    "switchCancel": "取消",
+    "targetRole": "目标岗位",
+    "customRolePlaceholder": "或输入具体岗位，如「资深前端 / AI 全栈」",
+    "difficulty": "难度",
+    "salary": "薪资区间",
+    "deadline": "目标达成时间",
+    "deadlineHint": "系统会按剩余天数倒排学习路线",
+    "reminder": "学习提醒",
+    "enableDesktopReminder": "开启桌面提醒",
+    "pushNow": "立即推送"
   }
 }

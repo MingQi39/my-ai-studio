@@ -1,14 +1,47 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  HistoryLearningDialog,
+  HistoryLearningEntryCard,
+  HistoryLearningHeaderButton,
+  TodayLearningCompactCard,
+  TodayLearningDialog,
+  TodayLearningHeaderButton,
+} from '@/components/interview/TodayLearningPanel';
+import { InterviewSettingsSheet } from '@/components/interview/InterviewSettingsSheet';
+import {
+  attemptCtaKind,
+  goalCoreChanged,
+  type GoalCore,
+} from '@/components/interview/interviewGoalDraft';
+import { VoiceAnswerControls } from '@/components/interview/VoiceAnswerControls';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   ArrowRight,
+  Bell,
+  BookOpen,
   Check,
   FileUp,
   Lightbulb,
   Loader2,
   Map,
+  Menu,
+  PanelLeft,
+  PanelRight,
   SkipForward,
   X,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/components/ui/utils';
 import {
   abandonInterviewAttempt,
   ApiError,
@@ -20,6 +53,8 @@ import {
   getActiveInterviewAttempt,
   getInterviewAttemptHint,
   getInterviewProfile,
+  getInterviewPushSettings,
+  getInterviewTodayPlan,
   getInterviewTrainingProgress,
   getResumeEligibility,
   listInterviewClaims,
@@ -27,13 +62,19 @@ import {
   saveInterviewClaim,
   submitInterviewAttemptAnswer,
   updateInterviewProfile,
+  updateInterviewPushSettings,
   type InterviewAttempt,
   type InterviewFeedback,
+  type InterviewPushSettings,
   type InterviewReviewCard,
+  type InterviewTodayPlan,
   type InterviewTrainingProgress,
+  type PushFrequency,
   type ResumeCandidate,
   type ResumeEligibility,
 } from '@/services/api';
+import { PUSH_FREQUENCY_OPTIONS, pushInterviewNow, requestInterviewPushPermission, useInterviewPush } from '@/hooks/useInterviewPush';
+import { getPlatform } from '@/platform';
 import {
   Dialog,
   DialogContent,
@@ -98,14 +139,188 @@ function MetricBar({ value, max = 1 }: { value: number; max?: number }) {
   );
 }
 
+function useMinWidth(minWidth: number) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= minWidth : true,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(`(min-width: ${minWidth}px)`);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, [minWidth]);
+
+  return matches;
+}
+
+/** narrow <1280 drawer · medium 1280–1535 compact 3-col · wide ≥1536 full rails */
+type TrainLayoutTier = 'narrow' | 'medium' | 'wide';
+
+function useTrainLayoutTier(): TrainLayoutTier {
+  const isWide = useMinWidth(1536);
+  const isMedium = useMinWidth(1280);
+  if (isWide) return 'wide';
+  if (isMedium) return 'medium';
+  return 'narrow';
+}
+
+function SidebarToggle({
+  isSidebarOpen,
+  toggleSidebar,
+}: {
+  isSidebarOpen: boolean;
+  toggleSidebar?: () => void;
+}) {
+  const { t } = useTranslation();
+  if (!toggleSidebar) return null;
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={toggleSidebar}
+      aria-label={isSidebarOpen ? t('sidebar.collapse') : t('sidebar.expand')}
+      title={isSidebarOpen ? t('sidebar.collapse') : t('sidebar.expand')}
+      className={cn(
+        'h-9 w-9 shrink-0 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]',
+        isSidebarOpen ? 'md:hidden' : '',
+      )}
+    >
+      <Menu size={20} />
+    </Button>
+  );
+}
+
+function TrainSideRail({
+  open,
+  onClose,
+  side,
+  isWide,
+  widthClass,
+  title,
+  presentation = 'side',
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  side: 'left' | 'right';
+  isWide: boolean;
+  widthClass: string;
+  title?: string;
+  /** narrow 下 left 用 bottom，避免窄侧栏里叠两块长内容 */
+  presentation?: 'side' | 'bottom';
+  children: ReactNode;
+}) {
+  if (isWide) {
+    return (
+      <div
+        className={cn(
+          'h-full flex-shrink-0 overflow-hidden transition-[width,opacity] duration-300 ease-in-out',
+          open ? cn(widthClass, 'opacity-100') : 'w-0 opacity-0',
+        )}
+      >
+        <div className={cn('flex h-full flex-col gap-4 overflow-y-auto', widthClass)}>{children}</div>
+      </div>
+    );
+  }
+
+  const isBottom = presentation === 'bottom';
+
+  return (
+    <div
+      className={cn(
+        'fixed inset-0 z-30',
+        open ? 'pointer-events-auto' : 'pointer-events-none',
+      )}
+      aria-hidden={!open}
+    >
+      <button
+        type="button"
+        className={cn(
+          'absolute inset-0 bg-black/40 transition-opacity duration-300',
+          open ? 'opacity-100' : 'opacity-0',
+        )}
+        onClick={onClose}
+        aria-label={side === 'left' ? '关闭训练导航' : '关闭反馈面板'}
+      />
+      <div
+        className={cn(
+          'absolute flex flex-col bg-[var(--bg-main)] shadow-2xl transition-transform duration-300 ease-in-out',
+          isBottom
+            ? cn(
+                'inset-x-0 bottom-0 max-h-[min(88dvh,88vh)] rounded-t-2xl border-t border-[var(--border-color)]',
+                open ? 'translate-y-0' : 'translate-y-full',
+              )
+            : cn(
+                'inset-y-0 w-[min(320px,92vw)]',
+                side === 'left' ? 'left-0' : 'right-0',
+                open
+                  ? 'translate-x-0'
+                  : side === 'left'
+                    ? '-translate-x-full'
+                    : 'translate-x-full',
+              ),
+        )}
+      >
+        <div
+          className={cn(
+            'flex shrink-0 items-center gap-2 border-b border-[var(--border-color)] px-3',
+            isBottom ? 'pt-2 pb-2.5' : 'py-2.5',
+          )}
+        >
+          {isBottom && (
+            <div className="absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-[var(--border-color)]" />
+          )}
+          <p
+            className={cn(
+              'min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]',
+              isBottom && 'pt-2',
+            )}
+          >
+            {title || (side === 'left' ? '训练导航' : '反馈')}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            aria-label="关闭"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div
+          className={cn(
+            'min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-3',
+            'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+          )}
+        >
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProgressPanel({
   progress,
+  todayPlan,
+  todayPlanLoading,
+  onOpenTodayLearning,
+  onOpenHistoryLearning,
   onStartModule,
   onProjectSim,
+  dense = false,
 }: {
   progress: InterviewTrainingProgress;
+  todayPlan?: InterviewTodayPlan | null;
+  todayPlanLoading?: boolean;
+  onOpenTodayLearning?: () => void;
+  onOpenHistoryLearning?: () => void;
   onStartModule?: (topic: string) => void;
   onProjectSim?: () => void;
+  /** Medium layout: drop header-duplicated cards and tighten spacing */
+  dense?: boolean;
 }) {
   const [openDetail, setOpenDetail] = useState(false);
   const { coverage, route_depth: depth, retention, expectations, next_step, composite, weekly_trend, learning_path } =
@@ -116,29 +331,80 @@ function ProgressPanel({
   const nextMod = learning_path?.next_module;
 
   return (
-    <div className="space-y-5">
+    <div className={dense ? 'space-y-3' : 'space-y-5'}>
+      {!dense && (
+        <>
+          <TodayLearningCompactCard
+            todayPlan={todayPlan ?? null}
+            loading={todayPlanLoading}
+            onOpenFull={onOpenTodayLearning}
+          />
+          {onOpenHistoryLearning && <HistoryLearningEntryCard onOpen={onOpenHistoryLearning} />}
+        </>
+      )}
+
+      {todayPlan && !todayPlan.learning_doc && (todayPlan.tasks.length > 0 || todayPlan.due_review_count > 0) && (
+        <div className={cn('rounded-xl border border-amber-500/30 bg-amber-500/5', dense ? 'p-2.5' : 'p-3')}>
+          <p className="text-[10px] font-medium tracking-wide text-amber-700 dark:text-amber-300">
+            今日计划 · {todayPlan.date}
+          </p>
+          {todayPlan.tasks.map((task) => (
+            <div key={`${task.date}-${task.topic}-${task.task_type}`} className="mt-2">
+              <p className="text-sm font-medium text-[var(--text-primary)]">
+                {task.task_type === 'review' ? '复习' : task.task_type === 'consolidate' ? '巩固' : '训练'} ·{' '}
+                {task.title}
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-secondary)]">{task.message}</p>
+              {onStartModule && task.task_type !== 'review' && (
+                <button
+                  type="button"
+                  onClick={() => onStartModule(task.topic)}
+                  className="mt-2 rounded-lg bg-amber-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-200"
+                >
+                  开始练 {task.topic}
+                </button>
+              )}
+            </div>
+          ))}
+          {todayPlan.due_review_count > 0 && (
+            <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
+              另有 {todayPlan.due_review_count} 张复习卡到期
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="text-[10px] font-medium tracking-wide text-[var(--text-secondary)]">
             综合进展 · {TIER_LABEL[progress.goal.tier]}对齐
           </p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums leading-none text-[var(--text-primary)]">
+          <p
+            className={cn(
+              'mt-1 font-semibold tabular-nums leading-none text-[var(--text-primary)]',
+              dense ? 'text-2xl' : 'text-3xl',
+            )}
+          >
             {composite.score}
             <span className="ml-1 text-sm font-normal text-[var(--text-secondary)]">/100</span>
           </p>
         </div>
-        <p className="max-w-[9rem] text-right text-[10px] leading-snug text-[var(--text-secondary)]">
-          仅计完成闭环与复习
-        </p>
+        {!dense && (
+          <p className="max-w-[9rem] text-right text-[10px] leading-snug text-[var(--text-secondary)]">
+            仅计完成闭环与复习
+          </p>
+        )}
       </div>
 
       {nextMod && (
-        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-main)] p-3">
+        <div className={cn('rounded-xl border border-[var(--border-color)] bg-[var(--bg-main)]', dense ? 'p-2.5' : 'p-3')}>
           <p className="text-[10px] font-medium tracking-wide text-[var(--text-secondary)]">
             学习路线 · {learning_path?.done_count ?? 0}/{learning_path?.total_relevant ?? 0} 阶段
           </p>
           <p className="mt-1 text-sm font-medium text-[var(--text-primary)]">下一模块：{nextMod.title}</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-secondary)]">{nextMod.reason}</p>
+          {!dense && (
+            <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-secondary)]">{nextMod.reason}</p>
+          )}
           <div className="mt-2.5 flex flex-wrap gap-2">
             {onStartModule && (
               <button
@@ -162,7 +428,7 @@ function ProgressPanel({
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className={dense ? 'space-y-2.5' : 'space-y-4'}>
         <div>
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-xs text-[var(--text-primary)]">主题覆盖</span>
@@ -183,9 +449,11 @@ function ProgressPanel({
             value={depth.tradeoff_rate * 0.6 + depth.evidence_rate * 0.4}
             max={1}
           />
-          <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
-            取舍 {Math.round(depth.tradeoff_rate * 100)}% · 证据 {Math.round(depth.evidence_rate * 100)}%
-          </p>
+          {!dense && (
+            <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
+              取舍 {Math.round(depth.tradeoff_rate * 100)}% · 证据 {Math.round(depth.evidence_rate * 100)}%
+            </p>
+          )}
         </div>
         <div>
           <div className="flex items-baseline justify-between gap-2">
@@ -198,7 +466,12 @@ function ProgressPanel({
         </div>
       </div>
 
-      <p className="rounded-xl bg-amber-500/10 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900 dark:text-amber-100">
+      <p
+        className={cn(
+          'rounded-xl bg-amber-500/10 leading-relaxed text-amber-900 dark:text-amber-100',
+          dense ? 'line-clamp-3 px-2.5 py-2 text-[11px]' : 'px-3 py-2.5 text-[12px]',
+        )}
+      >
         {next_step}
       </p>
 
@@ -285,6 +558,211 @@ function AtlasPath({ nodes, focus }: { nodes: string[]; focus?: string }) {
   );
 }
 
+function AtlasRailBody({
+  training,
+  topics,
+  customTopic,
+  setCustomTopic,
+  setTopics,
+  cards,
+  hasResumeClaims,
+  busy,
+  comicCollapsed,
+  onToggleComic,
+  onOpenComic,
+  onPickTopic,
+  extrasOpen,
+  onToggleExtras,
+  compactExtras = false,
+}: {
+  training: Pick<
+    InterviewAttempt,
+    'topic' | 'atlas' | 'comic_url' | 'training_mode' | 'structure_hint'
+  >;
+  topics: string[];
+  customTopic: string;
+  setCustomTopic: (v: string) => void;
+  setTopics: Dispatch<SetStateAction<string[]>>;
+  cards: InterviewReviewCard[];
+  hasResumeClaims: boolean;
+  busy: BusyKind;
+  comicCollapsed?: boolean;
+  onToggleComic?: () => void;
+  onOpenComic: (src: string, alt: string) => void;
+  onPickTopic: (topic: string) => void;
+  extrasOpen?: boolean;
+  onToggleExtras?: () => void;
+  compactExtras?: boolean;
+}) {
+  const comicBlock = training.comic_url ? (
+    comicCollapsed ? (
+      <button
+        type="button"
+        onClick={onToggleComic}
+        className="mt-3 flex w-full items-center justify-between rounded-xl border border-[var(--border-color)] px-3 py-2.5 text-left text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+      >
+        <span>模块入门漫画</span>
+        <span className="text-amber-700 dark:text-amber-300">展开预览</span>
+      </button>
+    ) : (
+      <div className="mt-3 space-y-2">
+        {onToggleComic && (
+          <button
+            type="button"
+            onClick={onToggleComic}
+            className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          >
+            收起漫画
+          </button>
+        )}
+        <button
+          type="button"
+          className="block w-full overflow-hidden rounded-xl border border-[var(--border-color)] text-left"
+          onClick={() => onOpenComic(training.comic_url!, `${training.topic} 概念图`)}
+          title="点击查看大图"
+        >
+          <img
+            src={training.comic_url}
+            alt={`${training.topic} 概念图`}
+            className="max-h-36 w-full object-cover object-top"
+          />
+          <p className="px-2 py-1.5 text-[10px] text-[var(--text-secondary)]">模块入门漫画 · 点击放大</p>
+        </button>
+      </div>
+    )
+  ) : null;
+
+  const topicPicker = (
+    <>
+      <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">
+        {hasResumeClaims ? '目标题库 + 简历经历' : '按岗位生成的题库'}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {topics.slice(0, 12).map((topic) => (
+          <button
+            key={topic}
+            type="button"
+            onClick={() => onPickTopic(topic)}
+            className={`min-h-9 rounded-lg px-2.5 py-1.5 text-xs ${
+              training.topic === topic
+                ? 'bg-amber-500/15 font-semibold text-amber-700 dark:text-amber-300'
+                : 'bg-[var(--bg-main)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            {topic}
+          </button>
+        ))}
+      </div>
+      <form
+        className="mt-3 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const topic = customTopic.trim();
+          if (!topic) return;
+          setTopics((prev) => (prev.includes(topic) ? prev : [topic, ...prev].slice(0, 12)));
+          setCustomTopic('');
+          onPickTopic(topic);
+        }}
+      >
+        <input
+          value={customTopic}
+          onChange={(e) => setCustomTopic(e.target.value)}
+          placeholder="自定义主题"
+          className="min-h-9 min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-input)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-amber-500/50"
+        />
+        <button
+          type="submit"
+          disabled={!!busy || !customTopic.trim()}
+          className="min-h-9 rounded-lg border border-[var(--border-color)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] disabled:opacity-50"
+        >
+          练这个
+        </button>
+      </form>
+    </>
+  );
+
+  const reviewCards =
+    cards.length > 0 ? (
+      <ul className="space-y-2">
+        {cards.slice(0, 5).map((card) => (
+          <li key={card.id}>
+            <button
+              type="button"
+              onClick={() => onPickTopic(card.topic)}
+              className="w-full rounded-lg border border-[var(--border-color)] px-3 py-2.5 text-left text-xs hover:border-amber-500/40"
+            >
+              <span className="font-medium text-[var(--text-primary)]">{card.topic}</span>
+              <span className="mt-1 block text-[var(--text-secondary)]">
+                {card.next_due_at ? `到期 · ` : ''}
+                卡在：
+                {card.missing_nodes.slice(0, 2).map(routeNodeLabel).join('、') || '—'}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : null;
+
+  if (compactExtras) {
+    return (
+      <>
+        <p className="mb-2 text-[10px] font-medium tracking-wide text-[var(--text-secondary)]">
+          面试地图 · 当前路径
+        </p>
+        <AtlasPath nodes={training.atlas} focus={training.topic} />
+        {training.training_mode === 'project_sim' && training.structure_hint && (
+          <p className="mt-2 rounded-lg bg-sky-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-sky-900 dark:text-sky-100">
+            项目模拟 · {training.structure_hint}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={onToggleExtras}
+          className="mt-3 flex min-h-10 w-full items-center justify-between rounded-lg py-1 text-left text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        >
+          <span>
+            题库 / 漫画 / 复习
+            {cards.length > 0 ? ` · ${Math.min(cards.length, 5)} 张卡` : ''}
+          </span>
+          <span>{extrasOpen ? '收起' : '展开'}</span>
+        </button>
+        {extrasOpen && (
+          <div className="mt-2 space-y-3">
+            {comicBlock}
+            {topicPicker}
+            {reviewCards}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="mb-3 text-xs text-[var(--text-secondary)]">当前问题在路径中的位置</p>
+      <AtlasPath nodes={training.atlas} focus={training.topic} />
+      {comicBlock}
+      {training.training_mode === 'project_sim' && training.structure_hint && (
+        <p className="mt-3 rounded-lg bg-sky-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-sky-900 dark:text-sky-100">
+          项目模拟 · {training.structure_hint}
+        </p>
+      )}
+      <div className="my-5 h-px bg-[var(--border-color)]" />
+      {topicPicker}
+      {cards.length > 0 && (
+        <>
+          <div className="my-5 h-px bg-[var(--border-color)]" />
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)]">
+            <Map className="h-3.5 w-3.5" />
+            待复习断点
+          </p>
+          {reviewCards}
+        </>
+      )}
+    </>
+  );
+}
+
 function RouteChecklist({
   nodes,
   covered,
@@ -336,17 +814,25 @@ function Panel({
   eyebrow,
   children,
   className = '',
+  compact = false,
 }: {
   title: string;
   eyebrow?: string;
   children: ReactNode;
   className?: string;
+  /** Medium screens: tighter chrome so the practice column keeps room */
+  compact?: boolean;
 }) {
   return (
     <section
       className={`flex min-h-0 flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] ${className}`}
     >
-      <header className="border-b border-[var(--border-color)] px-5 py-4">
+      <header
+        className={cn(
+          'border-b border-[var(--border-color)]',
+          compact ? 'px-3.5 py-3' : 'px-5 py-4',
+        )}
+      >
         {eyebrow && (
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
             {eyebrow}
@@ -354,7 +840,7 @@ function Panel({
         )}
         <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
+      <div className={cn('min-h-0 flex-1 overflow-y-auto', compact ? 'p-3.5' : 'p-5')}>{children}</div>
     </section>
   );
 }
@@ -398,7 +884,17 @@ function ChoiceButton({
   );
 }
 
-export function InterviewPage() {
+interface InterviewPageProps {
+  isSidebarOpen?: boolean;
+  toggleSidebar?: () => void;
+}
+
+export function InterviewPage({
+  isSidebarOpen = true,
+  toggleSidebar,
+}: InterviewPageProps) {
+  const { t } = useTranslation();
+  const platform = getPlatform();
   const fileRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>('loading');
   const [busy, setBusy] = useState<BusyKind>(false);
@@ -426,10 +922,116 @@ export function InterviewPage() {
   const [resumeOpen, setResumeOpen] = useState(false);
   const [resumeBusy, setResumeBusy] = useState(false);
   const [resumeWarn, setResumeWarn] = useState<string[] | null>(null);
+  const [targetDeadline, setTargetDeadline] = useState('');
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushTime, setPushTime] = useState('21:00');
+  const [pushFrequency, setPushFrequency] = useState<PushFrequency>('weekdays');
+  const [pushSettings, setPushSettings] = useState<InterviewPushSettings | null>(null);
+  const [pushSettingsBusy, setPushSettingsBusy] = useState(false);
+  const [todayPlan, setTodayPlan] = useState<InterviewTodayPlan | null>(null);
+  const [todayPlanLoading, setTodayPlanLoading] = useState(false);
+  const [learnDialogOpen, setLearnDialogOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [pushNowBusy, setPushNowBusy] = useState(false);
+  const [leftRailOpen, setLeftRailOpen] = useState(true);
+  const [rightRailOpen, setRightRailOpen] = useState(true);
+  const [atlasExtrasOpen, setAtlasExtrasOpen] = useState(false);
+  const [mobileLeftTab, setMobileLeftTab] = useState<'progress' | 'atlas'>('progress');
+  const [mobileComicCollapsed, setMobileComicCollapsed] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [draftRole, setDraftRole] = useState('全栈');
+  const [draftCustomRole, setDraftCustomRole] = useState('');
+  const [draftDifficulty, setDraftDifficulty] = useState<Difficulty>('中级');
+  const [draftSalary, setDraftSalary] = useState('25-40k');
+  const [draftDeadline, setDraftDeadline] = useState('');
+  const [goalConfirmOpen, setGoalConfirmOpen] = useState(false);
+  const [deadlineConfirmOpen, setDeadlineConfirmOpen] = useState(false);
+  const [switchConfirmOpen, setSwitchConfirmOpen] = useState(false);
   const recentQuestionsRef = useRef<string[]>([]);
+  const layoutTier = useTrainLayoutTier();
+  const isWideLayout = layoutTier !== 'narrow';
+  const isCompactLayout = layoutTier === 'medium';
 
   const resolvedRole = customRole.trim() || targetRole;
   const training = attempt;
+  const ctaKind = attemptCtaKind(attempt?.status);
+
+  useEffect(() => {
+    if (layoutTier === 'wide') {
+      setLeftRailOpen(true);
+      setRightRailOpen(true);
+    } else if (layoutTier === 'medium') {
+      // Keep practice column dominant: progress open, feedback on demand
+      setLeftRailOpen(true);
+      setRightRailOpen(false);
+    } else {
+      setLeftRailOpen(false);
+      setRightRailOpen(false);
+    }
+  }, [layoutTier]);
+
+  useInterviewPush(pushSettings, phase === 'train');
+
+  const refreshTodayPlan = async (opts?: { refresh?: boolean }) => {
+    setTodayPlanLoading(true);
+    try {
+      setTodayPlan(await getInterviewTodayPlan({ refresh: opts?.refresh }));
+    } catch {
+      // non-blocking
+    } finally {
+      setTodayPlanLoading(false);
+    }
+  };
+
+  const openTodayLearning = (opts?: { refresh?: boolean }) => {
+    setLeftRailOpen(false);
+    void refreshTodayPlan(opts);
+    setLearnDialogOpen(true);
+  };
+
+  const openHistoryLearning = () => {
+    setLeftRailOpen(false);
+    setHistoryDialogOpen(true);
+  };
+
+  const onPushNow = async () => {
+    setPushNowBusy(true);
+    setError(null);
+    setWarning(null);
+    try {
+      // Force-refresh so push opens the new Q&A learning sheet.
+      await refreshTodayPlan({ refresh: true });
+      const result = await pushInterviewNow({
+        push_enabled: true,
+        push_time: pushTime,
+        push_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        push_frequency: pushFrequency,
+        target_deadline: targetDeadline || pushSettings?.target_deadline || null,
+        last_push_date: pushSettings?.last_push_date || null,
+      });
+      if (result.ok) {
+        setWarning('已推送。系统通知是入口，完整「讲解+题目+答案」在今日学习讲义里');
+        setLearnDialogOpen(true);
+      } else {
+        setError(result.reason || '立即推送失败');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '立即推送失败');
+    } finally {
+      setPushNowBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    const hash = window.location.hash || '';
+    if (hash.includes('openLearn=1')) {
+      setLearnDialogOpen(true);
+      void refreshTodayPlan();
+      const cleaned = hash.replace(/[?&]openLearn=1/, '').replace(/\?$/, '');
+      window.location.hash = cleaned || '#/interview';
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refreshProgress = async () => {
     try {
@@ -442,6 +1044,7 @@ export function InterviewPage() {
     } catch {
       // non-blocking
     }
+    void refreshTodayPlan();
   };
 
   const applyAttempt = (next: InterviewAttempt, opts?: { clearAnswer?: boolean }) => {
@@ -552,6 +1155,20 @@ export function InterviewPage() {
         setLevel(difficultyToLevel(d));
       }
       if (profile.salary_band) setSalaryBand(profile.salary_band);
+      if (profile.target_deadline) setTargetDeadline(profile.target_deadline);
+
+      try {
+        const settings = await getInterviewPushSettings();
+        setPushSettings(settings);
+        setPushEnabled(settings.push_enabled);
+        setPushTime(normalizePushTime(settings.push_time || '21:00'));
+        setPushFrequency(settings.push_frequency || 'weekdays');
+        if (settings.target_deadline && !profile.target_deadline) {
+          setTargetDeadline(settings.target_deadline);
+        }
+      } catch {
+        // non-blocking
+      }
 
       if (profile.target_role && profile.target_level && profile.salary_band) {
         await enterTrain(difficultyToLevel(levelToDifficulty(profile.target_level)));
@@ -578,6 +1195,48 @@ export function InterviewPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [comicLightbox]);
 
+  const normalizePushTime = (raw: string) => {
+    const match = raw.trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return '21:00';
+    const hour = Math.min(23, Math.max(0, Number(match[1])));
+    const minute = Math.min(59, Math.max(0, Number(match[2])));
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  };
+
+  const persistPushSettings = async (patch?: {
+    push_enabled?: boolean;
+    push_time?: string;
+    push_frequency?: PushFrequency;
+  }) => {
+    if (!platform.push.supportsPush) return;
+    const nextEnabled = patch?.push_enabled ?? pushEnabled;
+    const nextTime = normalizePushTime(patch?.push_time ?? pushTime);
+    const nextFrequency = patch?.push_frequency ?? pushFrequency;
+    setPushSettingsBusy(true);
+    try {
+      const settings = await updateInterviewPushSettings({
+        push_enabled: nextEnabled,
+        push_time: nextTime,
+        push_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        push_frequency: nextFrequency,
+      });
+      setPushSettings(settings);
+      setPushEnabled(settings.push_enabled);
+      setPushTime(normalizePushTime(settings.push_time || nextTime));
+      setPushFrequency(settings.push_frequency || nextFrequency);
+      if (settings.push_enabled) {
+        const perm = await requestInterviewPushPermission();
+        if (perm === 'denied') {
+          setWarning('桌面通知被拒绝，你仍可在应用内查看今日计划');
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存推送设置失败');
+    } finally {
+      setPushSettingsBusy(false);
+    }
+  };
+
   const startWithGoal = async () => {
     if (!resolvedRole.trim() || !salaryBand) return;
     setBusy(true);
@@ -589,6 +1248,12 @@ export function InterviewPage() {
         target_role: resolvedRole.trim(),
         target_level: difficulty,
         salary_band: salaryBand,
+        target_deadline: targetDeadline || null,
+      });
+      await persistPushSettings({
+        push_enabled: platform.push.supportsPush ? pushEnabled : false,
+        push_time: pushTime,
+        push_frequency: pushFrequency,
       });
       await enterTrain(nextLevel);
     } catch (err) {
@@ -687,8 +1352,161 @@ export function InterviewPage() {
     });
   };
 
-  const submitAnswer = async () => {
-    if (!attempt || !answer.trim()) return;
+  const resolvedDraftRole = () => (draftCustomRole.trim() || draftRole).trim();
+
+  const savedGoalCore = (): GoalCore => ({
+    targetRole: resolvedRole.trim(),
+    difficulty,
+    salaryBand,
+  });
+
+  const draftGoalCore = (): GoalCore => ({
+    targetRole: resolvedDraftRole(),
+    difficulty: draftDifficulty,
+    salaryBand: draftSalary,
+  });
+
+  const seedSettingsDrafts = () => {
+    setDraftRole(targetRole);
+    setDraftCustomRole(customRole);
+    setDraftDifficulty(difficulty);
+    setDraftSalary(salaryBand);
+    setDraftDeadline(targetDeadline || '');
+  };
+
+  const openSettings = () => {
+    seedSettingsDrafts();
+    setSettingsOpen(true);
+  };
+
+  const handleSettingsOpenChange = (open: boolean) => {
+    setSettingsOpen(open);
+    if (!open) {
+      setGoalConfirmOpen(false);
+      setDeadlineConfirmOpen(false);
+    }
+  };
+
+  const applySavedGoalFromDraft = () => {
+    if (draftCustomRole.trim()) {
+      setCustomRole(draftCustomRole.trim());
+    } else {
+      setCustomRole('');
+      setTargetRole(draftRole);
+    }
+    setDifficulty(draftDifficulty);
+    setSalaryBand(draftSalary);
+    setLevel(difficultyToLevel(draftDifficulty));
+  };
+
+  const persistGoalAndMaybeStart = async (opts: { switchQuestion: boolean }) => {
+    const role = resolvedDraftRole();
+    if (!role || !draftSalary) return;
+    setBusy('loading');
+    setError(null);
+    try {
+      const nextLevel = difficultyToLevel(draftDifficulty);
+      await updateInterviewProfile({
+        target_role: role,
+        target_level: draftDifficulty,
+        salary_band: draftSalary,
+      });
+      applySavedGoalFromDraft();
+      setGoalConfirmOpen(false);
+      setSettingsOpen(false);
+      if (opts.switchQuestion) {
+        if (attempt && attemptCtaKind(attempt.status) === 'switch') {
+          try {
+            await abandonInterviewAttempt(attempt.id, 'switch_topic');
+          } catch {
+            // 409 terminal ok
+          }
+        }
+        setAttempt(null);
+        setFeedback(null);
+        setAnswer('');
+        setHintText(null);
+        recentQuestionsRef.current = [];
+        await enterTrain(nextLevel);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存目标失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onApplyGoal = () => {
+    if (!resolvedDraftRole() || !draftSalary) return;
+    if (!goalCoreChanged(savedGoalCore(), draftGoalCore())) {
+      setSettingsOpen(false);
+      return;
+    }
+    if (attemptCtaKind(attempt?.status) === 'switch') {
+      setGoalConfirmOpen(true);
+      return;
+    }
+    void persistGoalAndMaybeStart({ switchQuestion: false });
+  };
+
+  const cancelApplyGoal = () => {
+    seedSettingsDrafts();
+    setGoalConfirmOpen(false);
+  };
+
+  const onApplyDeadline = () => {
+    const next = draftDeadline || '';
+    const saved = targetDeadline || '';
+    if (next === saved) return;
+    setDeadlineConfirmOpen(true);
+  };
+
+  const confirmDeadline = async () => {
+    setBusy('loading');
+    setError(null);
+    try {
+      const next = draftDeadline || null;
+      await updateInterviewProfile({ target_deadline: next });
+      setTargetDeadline(next || '');
+      setDeadlineConfirmOpen(false);
+      void refreshTodayPlan({ refresh: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存截止日期失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelDeadline = () => {
+    setDraftDeadline(targetDeadline || '');
+    setDeadlineConfirmOpen(false);
+  };
+
+  const onHeaderQuestionCta = async () => {
+    if (ctaKind === 'switch') {
+      setSwitchConfirmOpen(true);
+      return;
+    }
+    setBusy('loading');
+    setError(null);
+    try {
+      await enterTrain(level);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成题目失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmSwitchQuestion = async () => {
+    setSwitchConfirmOpen(false);
+    await changeQuestion();
+  };
+
+  const submitAnswer = async (textOverride?: string) => {
+    if (!attempt) return;
+    const text = (textOverride ?? answer).trim();
+    if (!text) return;
     if (attempt.status === 'reanswered' || attempt.status === 'committed') return;
     setBusy('submitting');
     setError(null);
@@ -696,7 +1514,7 @@ export function InterviewPage() {
     try {
       const version: 1 | 2 = attempt.status === 'evaluated' ? 2 : 1;
       const result = await submitInterviewAttemptAnswer(attempt.id, {
-        text: answer.trim(),
+        text,
         version,
       });
       applyAttempt(result.attempt, { clearAnswer: version === 1 && !result.attempt.evaluation?.complete });
@@ -786,7 +1604,10 @@ export function InterviewPage() {
 
   if (phase === 'loading') {
     return (
-      <main className="flex flex-1 items-center justify-center bg-[var(--bg-main)]">
+      <main className="relative flex flex-1 items-center justify-center bg-[var(--bg-main)]">
+        <div className="absolute left-3 top-3">
+          <SidebarToggle isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
+        </div>
         <Loader2 className="h-6 w-6 animate-spin text-[var(--text-secondary)]" />
       </main>
     );
@@ -794,7 +1615,11 @@ export function InterviewPage() {
 
   if (phase === 'setup' || phase === 'import' || phase === 'confirm') {
     return (
+      <>
       <main className="relative flex-1 overflow-y-auto bg-[var(--bg-main)]">
+        <div className="absolute left-3 top-3 z-10">
+          <SidebarToggle isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
+        </div>
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.35]"
           style={{
@@ -803,9 +1628,9 @@ export function InterviewPage() {
             backgroundSize: '48px 48px',
           }}
         />
-        <div className="relative mx-auto max-w-3xl px-6 py-12 md:py-16">
+        <div className="relative mx-auto max-w-3xl px-4 pb-10 pt-16 sm:px-6 md:py-16 md:pt-16">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-600">Interview Navigator</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--text-primary)] md:text-4xl">
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-3xl md:text-4xl">
             {phase === 'confirm'
               ? '确认简历里的经历'
               : phase === 'import'
@@ -873,12 +1698,103 @@ export function InterviewPage() {
                 ))}
               </ChoiceGroup>
 
-              <div className="flex flex-wrap gap-3 pt-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">目标达成时间</p>
+                  <input
+                    type="date"
+                    value={targetDeadline}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setTargetDeadline(e.target.value)}
+                    className="mt-3 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-amber-500/50"
+                  />
+                  <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
+                    系统会按剩余天数倒排学习路线
+                    {platform.push.supportsPush ? '，并在设定时间推送今日任务' : ''}
+                  </p>
+                </div>
+                {platform.push.supportsPush ? (
+                  <div>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">学习提醒</p>
+                    <label className="mt-3 flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                      <input
+                        type="checkbox"
+                        checked={pushEnabled}
+                        disabled={pushSettingsBusy}
+                        onChange={(e) => {
+                          const enabled = e.target.checked;
+                          setPushEnabled(enabled);
+                          void persistPushSettings({ push_enabled: enabled });
+                        }}
+                        className="rounded border-[var(--border-color)]"
+                      />
+                      开启桌面提醒
+                    </label>
+                    <select
+                      value={pushFrequency}
+                      disabled={pushSettingsBusy}
+                      onChange={(e) => {
+                        const frequency = e.target.value as PushFrequency;
+                        setPushFrequency(frequency);
+                        void persistPushSettings({ push_frequency: frequency });
+                      }}
+                      className="mt-3 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-amber-500/50 disabled:opacity-50"
+                    >
+                      {PUSH_FREQUENCY_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="time"
+                      value={pushTime}
+                      disabled={pushSettingsBusy}
+                      onChange={(e) => {
+                        const next = normalizePushTime(e.target.value);
+                        setPushTime(next);
+                        void persistPushSettings({ push_time: next });
+                      }}
+                      className="mt-3 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-amber-500/50 disabled:opacity-50"
+                    />
+                    <button
+                      type="button"
+                      disabled={pushNowBusy || !targetDeadline}
+                      onClick={() => void onPushNow()}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-900 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-100"
+                    >
+                      {pushNowBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
+                      立即推送
+                    </button>
+                    <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
+                      改完开关/频率/时间会自动保存；也可用「立即推送」预览效果
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">学习提醒</p>
+                    <p className="mt-3 rounded-xl border border-dashed border-[var(--border-color)] px-4 py-3 text-[11px] leading-relaxed text-[var(--text-secondary)]">
+                      定时推送为桌面端能力。Web 端可用「立即推送」预览浏览器通知效果。
+                    </p>
+                    <button
+                      type="button"
+                      disabled={pushNowBusy || !targetDeadline}
+                      onClick={() => void onPushNow()}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-900 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-100"
+                    >
+                      {pushNowBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
+                      立即推送
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:flex-wrap">
                 <button
                   type="button"
                   disabled={busy || !resolvedRole.trim() || !salaryBand}
                   onClick={() => void startWithGoal()}
-                  className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                   生成面试题并开始
@@ -902,10 +1818,39 @@ export function InterviewPage() {
                       setBusy(false);
                     }
                   }}
-                  className="rounded-xl border border-[var(--border-color)] px-5 py-2.5 text-sm text-[var(--text-secondary)] disabled:opacity-50"
+                  className="w-full rounded-xl border border-[var(--border-color)] px-5 py-2.5 text-sm text-[var(--text-secondary)] disabled:opacity-50 sm:w-auto"
                 >
                   先导入简历再出题
                 </button>
+                {targetDeadline && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      void (async () => {
+                        setBusy(true);
+                        try {
+                          await updateInterviewProfile({
+                            target_role: resolvedRole.trim(),
+                            target_level: difficulty,
+                            salary_band: salaryBand,
+                            target_deadline: targetDeadline,
+                          });
+                          await refreshTodayPlan();
+                          setLearnDialogOpen(true);
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : '加载今日学习失败');
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
+                    }}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-5 py-2.5 text-sm text-amber-900 disabled:opacity-50 dark:text-amber-100 sm:w-auto"
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    今日学习文档
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1021,6 +1966,19 @@ export function InterviewPage() {
           )}
         </div>
       </main>
+      <TodayLearningDialog
+        open={learnDialogOpen}
+        onOpenChange={setLearnDialogOpen}
+        todayPlan={todayPlan}
+        loading={todayPlanLoading}
+        onRefresh={() => void refreshTodayPlan({ refresh: true })}
+        onStatusChange={() => void refreshTodayPlan()}
+      />
+      <HistoryLearningDialog
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+      />
+    </>
     );
   }
 
@@ -1048,239 +2006,345 @@ export function InterviewPage() {
 
   return (
     <main className="flex flex-1 flex-col overflow-hidden bg-[var(--bg-main)]">
-      <header className="flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border-color)] bg-[var(--bg-card)] px-5 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-600">
-            {goalLine || 'Workbench'} · 约 3 分钟
-          </p>
-          <h1 className="truncate text-lg font-semibold text-[var(--text-primary)]">
-            {training
-              ? `${training.training_mode === 'project_sim' ? '项目模拟 · ' : ''}今天练：${training.topic}`
-              : '面试导航'}
-          </h1>
+      <header
+        className={cn(
+          'flex flex-shrink-0 flex-col border-b border-[var(--border-color)] bg-[var(--bg-card)]',
+          isCompactLayout ? 'gap-1.5 px-3 py-2' : 'gap-2 px-3 py-2.5 sm:px-5 sm:py-3',
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+          <SidebarToggle isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() =>
+              setLeftRailOpen((v) => {
+                const next = !v;
+                if (next && isCompactLayout) setRightRailOpen(false);
+                return next;
+              })
+            }
+            aria-label={leftRailOpen ? '收起训练进展' : '展开训练进展'}
+            title={leftRailOpen ? '收起训练进展' : '展开训练进展'}
+            className={cn(
+              'h-9 w-9 shrink-0 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]',
+              leftRailOpen && 'text-amber-700 dark:text-amber-300',
+            )}
+          >
+            <PanelLeft size={18} />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-600">
+              {goalLine || 'Workbench'} · 约 3 分钟
+            </p>
+            <h1 className="truncate text-base font-semibold text-[var(--text-primary)] sm:text-lg">
+              {training
+                ? `${training.training_mode === 'project_sim' ? '项目模拟 · ' : ''}今天练：${training.topic}`
+                : '面试导航'}
+            </h1>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() =>
+              setRightRailOpen((v) => {
+                const next = !v;
+                if (next && isCompactLayout) setLeftRailOpen(false);
+                return next;
+              })
+            }
+            aria-label={rightRailOpen ? '收起反馈面板' : '展开反馈面板'}
+            title={rightRailOpen ? '收起反馈面板' : '展开反馈面板'}
+            className={cn(
+              'h-9 w-9 shrink-0 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]',
+              rightRailOpen && 'text-amber-700 dark:text-amber-300',
+            )}
+          >
+            <PanelRight size={18} />
+          </Button>
         </div>
-        <div className="flex items-center gap-1 rounded-lg border border-[var(--border-color)] p-1">
-          {DIFFICULTY_OPTIONS.map((opt) => (
-            <button
-              key={opt.label}
-              type="button"
-              onClick={() => {
-                setDifficulty(opt.label);
-                setLevel(opt.level);
-                void (async () => {
-                  await updateInterviewProfile({
-                    target_role: resolvedRole.trim(),
-                    target_level: opt.label,
-                    salary_band: salaryBand,
-                  });
-                  await loadTraining({ level: opt.level, topic: training?.topic });
-                })();
-              }}
-              className={`rounded-md px-2.5 py-1 text-xs ${
-                difficulty === opt.label
-                  ? 'bg-amber-500/15 font-semibold text-amber-700 dark:text-amber-300'
-                  : 'text-[var(--text-secondary)]'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-[var(--border-color)] p-0.5 sm:gap-1 sm:p-1">
+            {DIFFICULTY_OPTIONS.map((opt) => (
+              <button
+                key={opt.label}
+                type="button"
+                onClick={() => {
+                  setDifficulty(opt.label);
+                  setLevel(opt.level);
+                  void (async () => {
+                    await updateInterviewProfile({
+                      target_role: resolvedRole.trim(),
+                      target_level: opt.label,
+                      salary_band: salaryBand,
+                    });
+                    await loadTraining({ level: opt.level, topic: training?.topic });
+                  })();
+                }}
+                className={`rounded-md px-2 py-1 text-xs sm:px-2.5 ${
+                  difficulty === opt.label
+                    ? 'bg-amber-500/15 font-semibold text-amber-700 dark:text-amber-300'
+                    : 'text-[var(--text-secondary)]'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <TodayLearningHeaderButton
+            todayPlan={todayPlan}
+            loading={todayPlanLoading}
+            onClick={openTodayLearning}
+          />
+          <HistoryLearningHeaderButton onClick={openHistoryLearning} />
+          <button
+            type="button"
+            disabled={pushNowBusy}
+            onClick={() => void onPushNow()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-100 sm:px-3"
+            title="立即推送今日学习内容"
+          >
+            {pushNowBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+            <span className="hidden sm:inline">立即推送</span>
+          </button>
+          <button
+            type="button"
+            disabled={!!busy}
+            onClick={() => void onHeaderQuestionCta()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-2.5 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50 sm:px-3"
+          >
+            {ctaKind === 'switch' ? <SkipForward className="h-3.5 w-3.5" /> : null}
+            {ctaKind === 'switch' ? t('interviewNav.switchQuestion') : t('interviewNav.generateQuestion')}
+          </button>
+          <button
+            type="button"
+            disabled={!!busy}
+            onClick={() => openSettings()}
+            className="px-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50 sm:px-0"
+          >
+            {t('interviewNav.settings')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPhase('import')}
+            className="px-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] sm:px-0"
+          >
+            {hasResumeClaims ? '更新简历' : '补充简历'}
+          </button>
+          <button
+            type="button"
+            disabled={!resumeEligibility?.eligible || !!busy || resumeBusy}
+            title={
+              resumeEligibility && !resumeEligibility.eligible
+                ? resumeEligibility.reasons.join('；')
+                : '基于已确认事实与训练证据生成 Markdown 简历'
+            }
+            onClick={() => void onCraftResume()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-2.5 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50 sm:px-3"
+          >
+            {resumeBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            生成简历
+          </button>
         </div>
-        <button
-          type="button"
-          disabled={!!busy}
-          onClick={() => void changeQuestion()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
-        >
-          <SkipForward className="h-3.5 w-3.5" />
-          换一题
-        </button>
-        <button
-          type="button"
-          disabled={!!busy}
-          onClick={() => {
-            void (async () => {
-              if (attempt && attempt.status !== 'committed' && attempt.status !== 'abandoned') {
-                try {
-                  await abandonInterviewAttempt(attempt.id, 'switch_topic');
-                } catch {
-                  // 409 if already terminal — still leave train UI
-                }
-              }
-              setAttempt(null);
-              setFeedback(null);
-              setAnswer('');
-              setHintText(null);
-              recentQuestionsRef.current = [];
-              setPhase('setup');
-            })();
-          }}
-          className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
-        >
-          改目标
-        </button>
-        <button
-          type="button"
-          onClick={() => setPhase('import')}
-          className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-        >
-          {hasResumeClaims ? '更新简历' : '补充简历'}
-        </button>
-        <button
-          type="button"
-          disabled={!resumeEligibility?.eligible || !!busy || resumeBusy}
-          title={
-            resumeEligibility && !resumeEligibility.eligible
-              ? resumeEligibility.reasons.join('；')
-              : '基于已确认事实与训练证据生成 Markdown 简历'
-          }
-          onClick={() => void onCraftResume()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
-        >
-          {resumeBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          生成简历
-        </button>
       </header>
 
       {error && (
-        <p className="mx-5 mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600">
+        <p className="mx-3 mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600 sm:mx-5">
           {error}
         </p>
       )}
       {warning && (
-        <p className="mx-5 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-800 dark:text-amber-100">
+        <p className="mx-3 mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-800 dark:text-amber-100 sm:mx-5">
           {warning}
         </p>
       )}
 
-      <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[300px_minmax(0,1fr)_280px] lg:overflow-hidden">
-        <div className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
-          <Panel title="训练进展" eyebrow="Progress">
-            {progress ? (
-              <ProgressPanel
-                progress={progress}
-                onStartModule={(topic) => void loadTraining({ topic, level })}
-                onProjectSim={() => void loadTraining({ mode: 'project_sim', level, topic: 'Agent' })}
-              />
-            ) : (
-              <p className="text-xs text-[var(--text-secondary)]">加载进展中…</p>
-            )}
-          </Panel>
-          <Panel title="面试地图" eyebrow="Atlas">
-          {training && (
-            <>
-              <p className="mb-3 text-xs text-[var(--text-secondary)]">当前问题在路径中的位置</p>
-              <AtlasPath nodes={training.atlas} focus={training.topic} />
-              {training.comic_url && (
-                <button
-                  type="button"
-                  className="mt-3 block w-full overflow-hidden rounded-xl border border-[var(--border-color)] text-left"
-                  onClick={() =>
-                    setComicLightbox({
-                      src: training.comic_url!,
-                      alt: `${training.topic} 概念图`,
-                    })
-                  }
-                  title="点击查看大图"
-                >
-                  <img
-                    src={training.comic_url}
-                    alt={`${training.topic} 概念图`}
-                    className="max-h-36 w-full object-cover object-top"
-                  />
-                  <p className="px-2 py-1.5 text-[10px] text-[var(--text-secondary)]">模块入门漫画 · 点击放大</p>
-                </button>
-              )}
-              {training.training_mode === 'project_sim' && training.structure_hint && (
-                <p className="mt-3 rounded-lg bg-sky-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-sky-900 dark:text-sky-100">
-                  项目模拟 · {training.structure_hint}
-                </p>
-              )}
-              <div className="my-5 h-px bg-[var(--border-color)]" />
-              <p className="mb-2 text-xs font-medium text-[var(--text-secondary)]">
-                {hasResumeClaims ? '目标题库 + 简历经历' : '按岗位生成的题库'}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {topics.slice(0, 12).map((topic) => (
+      <div
+        className={cn(
+          'relative flex min-h-0 flex-1 overflow-hidden',
+          isCompactLayout ? 'gap-2.5 p-2.5' : 'gap-3 p-3 sm:gap-4 sm:p-4',
+        )}
+      >
+        <TrainSideRail
+          open={leftRailOpen}
+          onClose={() => setLeftRailOpen(false)}
+          side="left"
+          isWide={isWideLayout}
+          widthClass={isCompactLayout ? 'w-[300px]' : 'w-[280px]'}
+          title="训练导航"
+          presentation={!isWideLayout ? 'bottom' : 'side'}
+        >
+          {!isWideLayout ? (
+            <div className="space-y-3">
+              <div className="sticky top-0 z-10 -mx-1 flex gap-1 rounded-xl border border-[var(--border-color)] bg-[var(--bg-main)] p-1">
+                {(
+                  [
+                    { id: 'progress' as const, label: '进展' },
+                    { id: 'atlas' as const, label: '地图' },
+                  ] as const
+                ).map((tab) => (
                   <button
-                    key={topic}
+                    key={tab.id}
                     type="button"
-                    onClick={() => {
-                      if (topic !== training.topic) recentQuestionsRef.current = [];
-                      void loadTraining({ topic, level });
-                    }}
-                    className={`rounded-md px-2 py-1 text-xs ${
-                      training.topic === topic
-                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                        : 'bg-[var(--bg-main)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                    }`}
+                    onClick={() => setMobileLeftTab(tab.id)}
+                    className={cn(
+                      'min-h-10 flex-1 rounded-lg text-sm font-medium transition',
+                      mobileLeftTab === tab.id
+                        ? 'bg-amber-500/15 text-amber-900 dark:text-amber-100'
+                        : 'text-[var(--text-secondary)]',
+                    )}
                   >
-                    {topic}
+                    {tab.label}
                   </button>
                 ))}
               </div>
-              <form
-                className="mt-3 flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const topic = customTopic.trim();
-                  if (!topic) return;
-                  setTopics((prev) => (prev.includes(topic) ? prev : [topic, ...prev].slice(0, 12)));
-                  setCustomTopic('');
-                  void loadTraining({ topic, level });
-                }}
-              >
-                <input
-                  value={customTopic}
-                  onChange={(e) => setCustomTopic(e.target.value)}
-                  placeholder="自定义主题"
-                  className="min-w-0 flex-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-input)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-amber-500/50"
+              {mobileLeftTab === 'progress' ? (
+                progress ? (
+                  <ProgressPanel
+                    progress={progress}
+                    todayPlan={todayPlan}
+                    todayPlanLoading={todayPlanLoading}
+                    onOpenTodayLearning={openTodayLearning}
+                    onOpenHistoryLearning={openHistoryLearning}
+                    onStartModule={(topic) => {
+                      setLeftRailOpen(false);
+                      void loadTraining({ topic, level });
+                    }}
+                    onProjectSim={() => {
+                      setLeftRailOpen(false);
+                      void loadTraining({ mode: 'project_sim', level, topic: 'Agent' });
+                    }}
+                  />
+                ) : (
+                  <p className="text-xs text-[var(--text-secondary)]">加载进展中…</p>
+                )
+              ) : training ? (
+                <AtlasRailBody
+                  training={training}
+                  topics={topics}
+                  customTopic={customTopic}
+                  setCustomTopic={setCustomTopic}
+                  setTopics={setTopics}
+                  cards={cards}
+                  hasResumeClaims={hasResumeClaims}
+                  busy={busy}
+                  comicCollapsed={mobileComicCollapsed}
+                  onToggleComic={() => setMobileComicCollapsed((v) => !v)}
+                  onOpenComic={(src, alt) => {
+                    setLeftRailOpen(false);
+                    setComicLightbox({ src, alt });
+                  }}
+                  onPickTopic={(topic) => {
+                    if (topic !== training.topic) recentQuestionsRef.current = [];
+                    setLeftRailOpen(false);
+                    void loadTraining({ topic, level });
+                  }}
                 />
-                <button
-                  type="submit"
-                  disabled={busy || !customTopic.trim()}
-                  className="rounded-lg border border-[var(--border-color)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] disabled:opacity-50"
-                >
-                  练这个
-                </button>
-              </form>
-              {cards.length > 0 && (
-                <>
-                  <div className="my-5 h-px bg-[var(--border-color)]" />
-                  <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)]">
-                    <Map className="h-3.5 w-3.5" />
-                    待复习断点
-                  </p>
-                  <ul className="space-y-2">
-                    {cards.slice(0, 5).map((card) => (
-                      <li key={card.id}>
-                        <button
-                          type="button"
-                          onClick={() => void loadTraining({ topic: card.topic, level })}
-                          className="w-full rounded-lg border border-[var(--border-color)] px-3 py-2 text-left text-xs hover:border-amber-500/40"
-                        >
-                          <span className="font-medium text-[var(--text-primary)]">{card.topic}</span>
-                          <span className="mt-1 block text-[var(--text-secondary)]">
-                            {card.next_due_at ? `到期 · ` : ''}
-                            卡在：
-                            {card.missing_nodes.slice(0, 2).map(routeNodeLabel).join('、') || '—'}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
+              ) : (
+                <p className="text-xs text-[var(--text-secondary)]">暂无当前练习地图</p>
               )}
+            </div>
+          ) : isCompactLayout ? (
+            <Panel title="训练导航" eyebrow="Progress · Atlas" compact className="h-full min-h-0">
+              {progress ? (
+                <ProgressPanel
+                  progress={progress}
+                  todayPlan={todayPlan}
+                  todayPlanLoading={todayPlanLoading}
+                  dense
+                  onOpenTodayLearning={openTodayLearning}
+                  onOpenHistoryLearning={openHistoryLearning}
+                  onStartModule={(topic) => void loadTraining({ topic, level })}
+                  onProjectSim={() => void loadTraining({ mode: 'project_sim', level, topic: 'Agent' })}
+                />
+              ) : (
+                <p className="text-xs text-[var(--text-secondary)]">加载进展中…</p>
+              )}
+              {training && (
+                <div className="mt-4 border-t border-[var(--border-color)] pt-3">
+                  <AtlasRailBody
+                    training={training}
+                    topics={topics}
+                    customTopic={customTopic}
+                    setCustomTopic={setCustomTopic}
+                    setTopics={setTopics}
+                    cards={cards}
+                    hasResumeClaims={hasResumeClaims}
+                    busy={busy}
+                    extrasOpen={atlasExtrasOpen}
+                    onToggleExtras={() => setAtlasExtrasOpen((v) => !v)}
+                    onOpenComic={(src, alt) => setComicLightbox({ src, alt })}
+                    onPickTopic={(topic) => {
+                      if (topic !== training.topic) recentQuestionsRef.current = [];
+                      void loadTraining({ topic, level });
+                    }}
+                    compactExtras
+                  />
+                </div>
+              )}
+            </Panel>
+          ) : (
+            <>
+              <Panel title="训练进展" eyebrow="Progress" compact={isCompactLayout}>
+                {progress ? (
+                  <ProgressPanel
+                    progress={progress}
+                    todayPlan={todayPlan}
+                    todayPlanLoading={todayPlanLoading}
+                    onOpenTodayLearning={openTodayLearning}
+                    onOpenHistoryLearning={openHistoryLearning}
+                    onStartModule={(topic) => void loadTraining({ topic, level })}
+                    onProjectSim={() => void loadTraining({ mode: 'project_sim', level, topic: 'Agent' })}
+                  />
+                ) : (
+                  <p className="text-xs text-[var(--text-secondary)]">加载进展中…</p>
+                )}
+              </Panel>
+              <Panel title="面试地图" eyebrow="Atlas" compact={isCompactLayout}>
+                {training ? (
+                  <AtlasRailBody
+                    training={training}
+                    topics={topics}
+                    customTopic={customTopic}
+                    setCustomTopic={setCustomTopic}
+                    setTopics={setTopics}
+                    cards={cards}
+                    hasResumeClaims={hasResumeClaims}
+                    busy={busy}
+                    onOpenComic={(src, alt) => setComicLightbox({ src, alt })}
+                    onPickTopic={(topic) => {
+                      if (topic !== training.topic) recentQuestionsRef.current = [];
+                      void loadTraining({ topic, level });
+                    }}
+                  />
+                ) : null}
+              </Panel>
             </>
           )}
-          </Panel>
-        </div>
+        </TrainSideRail>
 
-        <Panel title="当前练习" eyebrow="主动回忆" className="lg:overflow-hidden">
+        <Panel
+          title="当前练习"
+          eyebrow="主动回忆"
+          compact={isCompactLayout}
+          className="min-w-0 flex-1 overflow-hidden"
+        >
           {training && (
             <div className="flex h-full flex-col">
-              <h3 className="text-xl font-semibold leading-snug text-[var(--text-primary)]">{training.question}</h3>
-              <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              <h3
+                className={cn(
+                  'font-semibold leading-snug text-[var(--text-primary)]',
+                  isCompactLayout ? 'text-base sm:text-lg' : 'text-lg sm:text-xl',
+                )}
+              >
+                {training.question}
+              </h3>
+              <p
+                className={cn(
+                  'text-[var(--text-secondary)]',
+                  isCompactLayout ? 'mt-1.5 text-xs' : 'mt-2 text-sm',
+                )}
+              >
                 先自己说。重点走通「
                 <span className="font-semibold text-amber-700 dark:text-amber-300">
                   {routeNodeLabel(training.focus_node)}
@@ -1296,7 +2360,12 @@ export function InterviewPage() {
                     : '开始说吧，短一点也没关系…'
                 }
                 disabled={attempt?.status === 'committed' || attempt?.status === 'abandoned'}
-                className="mt-5 min-h-[160px] w-full flex-1 resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] p-4 text-sm text-[var(--text-primary)] outline-none focus:border-amber-500/50 disabled:opacity-60"
+                className={cn(
+                  'w-full flex-1 resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] text-sm text-[var(--text-primary)] outline-none focus:border-amber-500/50 disabled:opacity-60',
+                  isCompactLayout
+                    ? 'mt-3 min-h-[120px] p-3 sm:min-h-[140px]'
+                    : 'mt-5 min-h-[140px] p-4 sm:min-h-[160px]',
+                )}
               />
               {hintText && (
                 <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
@@ -1304,21 +2373,46 @@ export function InterviewPage() {
                   L{hintLevel} · {hintText}
                 </p>
               )}
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2 pb-[max(0px,env(safe-area-inset-bottom))]">
                 {(canSubmitV1 || canSubmitV2) && (
-                  <button
-                    type="button"
-                    disabled={!!busy || !answer.trim()}
-                    onClick={() => void submitAnswer()}
-                    className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                  >
-                    {busy === 'submitting' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowRight className="h-4 w-4" />
-                    )}
-                    {canSubmitV2 ? '提交重答' : '提交并看断点'}
-                  </button>
+                  <>
+                    <VoiceAnswerControls
+                      disabled={
+                        !!busy ||
+                        attempt?.status === 'committed' ||
+                        attempt?.status === 'abandoned' ||
+                        attempt?.status === 'reanswered'
+                      }
+                      onError={(message) => setError(message)}
+                      onTranscribed={async (text) => {
+                        setAnswer(text);
+                        const canAuto =
+                          !!attempt &&
+                          (attempt.status === 'open' ||
+                            attempt.status === 'answering' ||
+                            attempt.status === 'evaluated' ||
+                            attempt.status === 'degraded');
+                        if (canAuto) {
+                          await submitAnswer(text);
+                        } else {
+                          setWarning('转写已填入答题框，请手动提交');
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={!!busy || !answer.trim()}
+                      onClick={() => void submitAnswer()}
+                      className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {busy === 'submitting' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowRight className="h-4 w-4" />
+                      )}
+                      {canSubmitV2 ? '提交重答' : '提交并看断点'}
+                    </button>
+                  </>
                 )}
                 {canCommit && (
                   <button
@@ -1375,40 +2469,104 @@ export function InterviewPage() {
           )}
         </Panel>
 
-        <Panel title="反馈与下一步" eyebrow="断点提示" className="lg:overflow-hidden">
-          {training && (
-            <>
-              <RouteChecklist nodes={training.route_nodes} covered={covered} missing={missing} focus={focus} />
-              {feedback ? (
-                <div className="mt-5 space-y-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-main)] p-3 text-sm">
-                  <p className="text-[var(--text-primary)]">{feedback.next_step}</p>
-                  {feedback.hint && (
-                    <p className="text-[var(--text-secondary)]">最小提示：{feedback.hint.recall}</p>
-                  )}
-                  {attempt?.status === 'evaluated' && !feedback.complete && (
-                    <p className="text-xs text-[var(--text-secondary)]">
-                      针对断点提交重答后，才能计入闭环并保存复习卡。
-                    </p>
-                  )}
-                  {canCommit && (
-                    <button
-                      type="button"
-                      disabled={!!busy}
-                      onClick={() => void finishRound()}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--text-primary)] px-3 py-2 text-sm font-semibold text-[var(--bg-card)] disabled:opacity-50"
-                    >
-                      完成并保存复习卡
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <p className="mt-5 text-sm text-[var(--text-secondary)]">
-                  先作答。提交后会标出已走通节点与当前断点，不会默认给完整答案。
+        <TrainSideRail
+          open={rightRailOpen}
+          onClose={() => setRightRailOpen(false)}
+          side="right"
+          isWide={isWideLayout}
+          widthClass={isCompactLayout ? 'w-[200px]' : 'w-[260px]'}
+          title="反馈与下一步"
+        >
+          {(() => {
+            const feedbackBody = training ? (
+              <>
+                <p className="mb-3 text-[10px] font-medium tracking-wide text-[var(--text-secondary)]">
+                  断点提示
                 </p>
-              )}
-            </>
-          )}
-        </Panel>
+                <RouteChecklist nodes={training.route_nodes} covered={covered} missing={missing} focus={focus} />
+                {feedback ? (
+                  <div className="mt-5 space-y-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-main)] p-3 text-sm">
+                    <p className="text-[var(--text-primary)]">{feedback.next_step}</p>
+                    {feedback.hint && (
+                      <p className="text-[var(--text-secondary)]">最小提示：{feedback.hint.recall}</p>
+                    )}
+                    {attempt?.status === 'evaluated' && !feedback.complete && (
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        针对断点提交重答后，才能计入闭环并保存复习卡。
+                      </p>
+                    )}
+                    {canCommit && (
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => {
+                          setRightRailOpen(false);
+                          void finishRound();
+                        }}
+                        className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--text-primary)] px-3 py-2 text-sm font-semibold text-[var(--bg-card)] disabled:opacity-50"
+                      >
+                        完成并保存复习卡
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-5 text-sm text-[var(--text-secondary)]">
+                    先作答。提交后会标出已走通节点与当前断点，不会默认给完整答案。
+                  </p>
+                )}
+              </>
+            ) : null;
+
+            if (!isWideLayout) return feedbackBody;
+
+            return (
+              <Panel
+                title="反馈与下一步"
+                eyebrow="断点提示"
+                compact={isCompactLayout}
+                className="h-full min-h-0 overflow-hidden"
+              >
+                {training && (
+                  <>
+                    <RouteChecklist
+                      nodes={training.route_nodes}
+                      covered={covered}
+                      missing={missing}
+                      focus={focus}
+                    />
+                    {feedback ? (
+                      <div className="mt-5 space-y-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-main)] p-3 text-sm">
+                        <p className="text-[var(--text-primary)]">{feedback.next_step}</p>
+                        {feedback.hint && (
+                          <p className="text-[var(--text-secondary)]">最小提示：{feedback.hint.recall}</p>
+                        )}
+                        {attempt?.status === 'evaluated' && !feedback.complete && (
+                          <p className="text-xs text-[var(--text-secondary)]">
+                            针对断点提交重答后，才能计入闭环并保存复习卡。
+                          </p>
+                        )}
+                        {canCommit && (
+                          <button
+                            type="button"
+                            disabled={!!busy}
+                            onClick={() => void finishRound()}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--text-primary)] px-3 py-2 text-sm font-semibold text-[var(--bg-card)] disabled:opacity-50"
+                          >
+                            完成并保存复习卡
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-5 text-sm text-[var(--text-secondary)]">
+                        先作答。提交后会标出已走通节点与当前断点，不会默认给完整答案。
+                      </p>
+                    )}
+                  </>
+                )}
+              </Panel>
+            );
+          })()}
+        </TrainSideRail>
       </div>
 
       <Dialog open={resumeOpen} onOpenChange={setResumeOpen}>
@@ -1431,6 +2589,128 @@ export function InterviewPage() {
           </button>
         </DialogContent>
       </Dialog>
+
+      <TodayLearningDialog
+        open={learnDialogOpen}
+        onOpenChange={setLearnDialogOpen}
+        todayPlan={todayPlan}
+        loading={todayPlanLoading}
+        onPractice={(topic) => void loadTraining({ topic, level })}
+        onRefresh={() => void refreshTodayPlan({ refresh: true })}
+        onStatusChange={() => void refreshTodayPlan()}
+      />
+      <HistoryLearningDialog
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+        onPractice={(topic) => void loadTraining({ topic, level })}
+      />
+
+      <InterviewSettingsSheet
+        open={settingsOpen}
+        onOpenChange={handleSettingsOpenChange}
+        targetRole={draftRole}
+        customRole={draftCustomRole}
+        difficulty={draftDifficulty}
+        salaryBand={draftSalary}
+        onTargetRole={setDraftRole}
+        onCustomRole={setDraftCustomRole}
+        onDifficulty={(d) => setDraftDifficulty(d as Difficulty)}
+        onSalaryBand={setDraftSalary}
+        onApplyGoal={onApplyGoal}
+        applyGoalDisabled={!!busy}
+        targetDeadline={draftDeadline}
+        onTargetDeadline={setDraftDeadline}
+        onApplyDeadline={onApplyDeadline}
+        applyDeadlineDisabled={!!busy}
+        supportsPush={platform.push.supportsPush}
+        pushEnabled={pushEnabled}
+        pushFrequency={pushFrequency}
+        pushTime={pushTime}
+        pushSettingsBusy={pushSettingsBusy}
+        onPushEnabled={(enabled) => {
+          setPushEnabled(enabled);
+          void persistPushSettings({ push_enabled: enabled });
+        }}
+        onPushFrequency={(frequency) => {
+          const next = frequency as PushFrequency;
+          setPushFrequency(next);
+          void persistPushSettings({ push_frequency: next });
+        }}
+        onPushTime={(time) => {
+          const next = normalizePushTime(time);
+          setPushTime(next);
+          void persistPushSettings({ push_time: next });
+        }}
+        onPushNow={() => void onPushNow()}
+        pushNowBusy={pushNowBusy}
+      />
+
+      <AlertDialog
+        open={goalConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) cancelApplyGoal();
+          else setGoalConfirmOpen(true);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('interviewNav.goalChangedTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('interviewNav.goalChangedBody')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('interviewNav.applyGoalLater')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void persistGoalAndMaybeStart({ switchQuestion: true });
+              }}
+            >
+              {t('interviewNav.applyGoalNow')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={deadlineConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) cancelDeadline();
+          else setDeadlineConfirmOpen(true);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('interviewNav.deadlineTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('interviewNav.deadlineBody')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('interviewNav.deadlineCancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDeadline();
+              }}
+            >
+              {t('interviewNav.deadlineConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={switchConfirmOpen} onOpenChange={setSwitchConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('interviewNav.switchTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('interviewNav.switchBody')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('interviewNav.switchCancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmSwitchQuestion()}>
+              {t('interviewNav.switchConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {comicLightbox && (
         <div

@@ -35,6 +35,7 @@ from app.interview.schemas import (
     InterviewClaimCreate,
     InterviewClaimUpdate,
     InterviewProfileUpdate,
+    PushSettingsUpdate,
     ReviewCardCreate,
     ReviewCardUpdate,
     SubmitAnswerRequest,
@@ -47,6 +48,16 @@ from app.config import settings
 from app.interview.model_roles import resolve_model_role
 from app.interview.progress import build_progress_payload
 from app.interview.learning_path import comic_url_for_topic
+from app.interview.plan_service import (
+    generate_learning_plan,
+    get_learning_doc_for_date,
+    get_learning_plan,
+    get_today_plan,
+    list_learning_docs,
+    push_settings_response,
+    set_learning_day_status,
+    update_push_settings,
+)
 from app.interview.orchestrator import TrainingOrchestrator, evaluate_with_optional_reflect
 from app.interview.question_bank_retrieval import QuestionBankRetrieval
 from app.interview.resume_craft import (
@@ -115,11 +126,50 @@ class InterviewService:
 
     async def update_profile(self, user_id: UUID, data: InterviewProfileUpdate) -> InterviewProfile:
         profile = await self.get_or_create_profile(user_id)
+        old_deadline = profile.target_deadline
         for field, value in data.model_dump(exclude_unset=True).items():
             setattr(profile, field, value)
         await self.db.commit()
         await self.db.refresh(profile)
+        if profile.target_deadline and profile.target_deadline != old_deadline:
+            await generate_learning_plan(self.db, profile)
         return profile
+
+    async def get_learning_plan(self, user_id: UUID):
+        profile = await self.get_or_create_profile(user_id)
+        return await get_learning_plan(self.db, profile)
+
+    async def regenerate_learning_plan(self, user_id: UUID):
+        profile = await self.get_or_create_profile(user_id)
+        return await generate_learning_plan(self.db, profile)
+
+    async def get_today_plan(self, user_id: UUID, *, force_refresh: bool = False):
+        profile = await self.get_or_create_profile(user_id)
+        return await get_today_plan(self.db, profile, force_refresh=force_refresh)
+
+    async def list_learning_docs(self, user_id: UUID):
+        profile = await self.get_or_create_profile(user_id)
+        return list_learning_docs(profile)
+
+    async def get_learning_doc_for_date(
+        self, user_id: UUID, iso_date: str, *, force_refresh: bool = False
+    ):
+        profile = await self.get_or_create_profile(user_id)
+        return await get_learning_doc_for_date(
+            self.db, profile, iso_date, force_refresh=force_refresh
+        )
+
+    async def set_learning_day_status(self, user_id: UUID, iso_date: str, *, status: str):
+        profile = await self.get_or_create_profile(user_id)
+        return await set_learning_day_status(self.db, profile, iso_date, status=status)
+
+    async def get_push_settings(self, user_id: UUID):
+        profile = await self.get_or_create_profile(user_id)
+        return push_settings_response(profile)
+
+    async def update_push_settings(self, user_id: UUID, data: PushSettingsUpdate):
+        profile = await self.get_or_create_profile(user_id)
+        return await update_push_settings(self.db, profile, data)
 
     async def list_claims(self, user_id: UUID) -> list[InterviewClaim]:
         profile = await self.get_or_create_profile(user_id)

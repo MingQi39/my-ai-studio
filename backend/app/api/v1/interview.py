@@ -1,10 +1,14 @@
 """Interview Navigator profile and training-attempt APIs."""
 
 from uuid import UUID
+import os
+import tempfile
+from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.dependencies import get_current_user_auth, get_db
 from app.interview.schemas import (
     AbandonAttemptRequest,
@@ -20,25 +24,55 @@ from app.interview.schemas import (
     InterviewClaimUpdate,
     InterviewProfileResponse,
     InterviewProfileUpdate,
+    LearningDayStatusResponse,
+    LearningDayStatusUpdate,
+    LearningDocAskRequest,
+    LearningDocAskResponse,
+    LearningDocByDateResponse,
+    LearningDocHistoryResponse,
+    LearningPlanResponse,
+    PushSettingsResponse,
+    PushSettingsUpdate,
     ResumeCraftResponse,
     ResumeEligibilityResponse,
     ResumeExtractionResponse,
     ReviewCardCreate,
     ReviewCardResponse,
     ReviewCardUpdate,
+    SttStatusResponse,
     SubmitAnswerRequest,
     SubmitAnswerResponse,
     TrainingAttemptResponse,
     TrainingProgressResponse,
     TrainingPromptResponse,
+    TodayPlanResponse,
+    TranscribeResponse,
 )
 from app.interview.resume_extract import extract_resume_claims, extract_resume_text
 from app.interview.services import InterviewService
+from app.interview.transcribe import (
+    SttConfigError,
+    SttEmptyError,
+    SttUpstreamError,
+    transcribe_audio_file,
+)
 
 router = APIRouter(prefix="/interview", tags=["interview"])
 
 MAX_RESUME_SIZE = 5 * 1024 * 1024
 
+_AUDIO_FORMAT_BY_TYPE = {
+    "audio/wav": "wav",
+    "audio/wave": "wav",
+    "audio/x-wav": "wav",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/ogg": "opus",
+    "audio/opus": "opus",
+    "audio/webm": "opus",
+    "audio/aac": "aac",
+    "audio/amr": "amr",
+}
 
 def _profile_response(profile) -> InterviewProfileResponse:
     return InterviewProfileResponse(
@@ -46,6 +80,7 @@ def _profile_response(profile) -> InterviewProfileResponse:
         target_role=profile.target_role,
         target_level=profile.target_level,
         salary_band=getattr(profile, "salary_band", None),
+        target_deadline=getattr(profile, "target_deadline", None),
         keywords=profile.keywords,
         updated_at=profile.updated_at,
     )
@@ -134,6 +169,107 @@ async def update_profile(
     db: AsyncSession = Depends(get_db),
 ):
     return _profile_response(await InterviewService(db).update_profile(user_id, data))
+
+
+@router.get("/plan", response_model=LearningPlanResponse)
+async def get_learning_plan(
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    return await InterviewService(db).get_learning_plan(user_id)
+
+
+@router.post("/plan/generate", response_model=LearningPlanResponse)
+async def regenerate_learning_plan(
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await InterviewService(db).get_or_create_profile(user_id)
+    if profile.target_deadline is None:
+        raise HTTPException(status_code=400, detail="请先设置目标达成时间")
+    return await InterviewService(db).regenerate_learning_plan(user_id)
+
+
+@router.get("/plan/today", response_model=TodayPlanResponse)
+async def get_today_plan(
+    refresh: bool = Query(default=False),
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    return await InterviewService(db).get_today_plan(user_id, force_refresh=refresh)
+
+
+@router.get("/plan/docs", response_model=LearningDocHistoryResponse)
+async def list_learning_docs(
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    return await InterviewService(db).list_learning_docs(user_id)
+
+
+@router.post("/plan/docs/ask", response_model=LearningDocAskResponse)
+async def ask_learning_doc(
+    data: LearningDocAskRequest,
+    user_id: UUID = Depends(get_current_user_auth),
+):
+    from app.interview.learning_doc_ask import ask_about_learning_quote
+
+    _ = user_id  # auth gate
+    try:
+        return await ask_about_learning_quote(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/plan/docs/{iso_date}", response_model=LearningDocByDateResponse)
+async def get_learning_doc_for_date(
+    iso_date: str,
+    refresh: bool = Query(default=False),
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await InterviewService(db).get_learning_doc_for_date(
+            user_id, iso_date, force_refresh=refresh
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/plan/docs/{iso_date}/status", response_model=LearningDayStatusResponse)
+async def set_learning_day_status(
+    iso_date: str,
+    data: LearningDayStatusUpdate,
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await InterviewService(db).set_learning_day_status(
+            user_id, iso_date, status=data.status
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/push-settings", response_model=PushSettingsResponse)
+async def get_push_settings(
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    return await InterviewService(db).get_push_settings(user_id)
+
+
+@router.put("/push-settings", response_model=PushSettingsResponse)
+async def update_push_settings(
+    data: PushSettingsUpdate,
+    user_id: UUID = Depends(get_current_user_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    return await InterviewService(db).update_push_settings(user_id, data)
 
 
 @router.get("/claims", response_model=list[InterviewClaimResponse])
@@ -291,3 +427,65 @@ async def abandon_attempt(
     return await InterviewService(db).abandon_attempt(
         user_id, attempt_id, data or AbandonAttemptRequest()
     )
+
+
+@router.get("/stt/status", response_model=SttStatusResponse)
+async def stt_status(_: UUID = Depends(get_current_user_auth)):
+    enabled = bool((settings.DASHSCOPE_API_KEY or "").strip())
+    return SttStatusResponse(enabled=enabled)
+
+
+@router.post("/transcribe", response_model=TranscribeResponse)
+async def transcribe_oral_answer(
+    file: UploadFile = File(...),
+    language: str = Query(default="zh", max_length=8),
+    _: UUID = Depends(get_current_user_auth),
+):
+    """Transcribe a short oral answer. Audio is not persisted."""
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    audio_format = _AUDIO_FORMAT_BY_TYPE.get(content_type)
+    filename = (file.filename or "").lower()
+    if audio_format is None:
+        if filename.endswith(".wav"):
+            audio_format = "wav"
+        elif filename.endswith(".mp3"):
+            audio_format = "mp3"
+        elif filename.endswith((".ogg", ".opus", ".webm")):
+            audio_format = "opus"
+        else:
+            raise HTTPException(status_code=400, detail="仅支持 wav/mp3/ogg/webm 等常见音频")
+
+    max_bytes = int(getattr(settings, "INTERVIEW_STT_MAX_BYTES", 15 * 1024 * 1024))
+    content = await file.read(max_bytes + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="音频为空")
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=400, detail="音频不能超过 15MB")
+
+    suffix = Path(filename).suffix if filename else f".{audio_format}"
+    if suffix not in {".wav", ".mp3", ".ogg", ".opus", ".webm", ".aac", ".amr"}:
+        suffix = f".{audio_format}"
+
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        text = transcribe_audio_file(tmp_path, audio_format=audio_format, language=language or "zh")
+        return TranscribeResponse(text=text)
+    except SttConfigError as exc:
+        raise HTTPException(status_code=503, detail="未配置语音识别") from exc
+    except SttEmptyError as exc:
+        raise HTTPException(status_code=400, detail="没听到内容，请再说一次") from exc
+    except SttUpstreamError as exc:
+        raise HTTPException(status_code=502, detail="语音识别失败，请稍后重试") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=502, detail="语音识别失败，请稍后重试") from exc
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass

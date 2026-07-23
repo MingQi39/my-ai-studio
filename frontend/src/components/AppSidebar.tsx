@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MessageSquare, Settings, Moon, Sun, Sparkles, ChevronRight, LogOut, ChevronDown, Trash2, MapPin, ArrowLeft, Brain, Wrench, Plus, UtensilsCrossed, Bug, FolderOpen } from 'lucide-react';
+import { MessageSquare, Settings, Moon, Sun, Sparkles, ChevronRight, LogOut, ChevronDown, Trash2, MapPin, ArrowLeft, Brain, Wrench, Plus, UtensilsCrossed, Bug, FolderOpen, PanelLeftClose } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -41,6 +41,7 @@ interface AppSidebarProps {
   onSelectSession: (sessionId: string) => void;
   onSessionsChange?: () => void;
   sessionRefreshTrigger?: number;
+  onCollapse?: () => void;
 }
 
 export function AppSidebar({
@@ -53,7 +54,8 @@ export function AppSidebar({
   currentSessionId,
   onSelectSession,
   onSessionsChange,
-  sessionRefreshTrigger
+  sessionRefreshTrigger,
+  onCollapse,
 }: AppSidebarProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -284,14 +286,27 @@ export function AppSidebar({
     <div className="w-full h-full flex flex-col min-w-0">
 
       {/* Header */}
-      <button
-        type="button"
-        onClick={() => navigate('/')}
-        className="h-[70px] w-full flex items-center px-5 gap-3 pt-2 flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity text-left group"
-      >
-        <BrandLogo size="sm" className="group-hover:shadow-md transition-shadow" alt={t('common.appName')} />
-        <h1 className="font-semibold text-[18px] tracking-tight text-[var(--text-primary)]">{t('common.appName')}</h1>
-      </button>
+      <div className="h-[70px] w-full flex items-center gap-1 px-3 pt-2 flex-shrink-0">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="min-w-0 flex-1 flex items-center gap-3 px-2 cursor-pointer hover:opacity-80 transition-opacity text-left group"
+        >
+          <BrandLogo size="sm" className="group-hover:shadow-md transition-shadow shrink-0" alt={t('common.appName')} />
+          <h1 className="font-semibold text-[18px] tracking-tight text-[var(--text-primary)] truncate">{t('common.appName')}</h1>
+        </button>
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            aria-label={t('sidebar.collapse')}
+            title={t('sidebar.collapse')}
+            className="h-8 w-8 shrink-0 flex items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <PanelLeftClose size={18} />
+          </button>
+        )}
+      </div>
 
       {/* Navigation - Scrollable */}
       <ScrollArea className="flex-1 px-3 mt-4 min-w-0 w-full custom-scrollbar">

@@ -555,6 +555,7 @@ export default function App() {
             onSelectSession={handleSelectSession}
             onSessionsChange={refreshSessions}
             sessionRefreshTrigger={sessionRefreshTrigger}
+            onCollapse={toggleSidebar}
           />
         </div>
       ) : (
@@ -592,6 +593,7 @@ export default function App() {
               onSelectSession={handleSelectSession}
               onSessionsChange={refreshSessions}
               sessionRefreshTrigger={sessionRefreshTrigger}
+              onCollapse={toggleSidebar}
             />
           </div>
         </div>
@@ -689,7 +691,15 @@ export default function App() {
             />
           }
         />
-        <Route path="/interview" element={<InterviewPage />} />
+        <Route
+          path="/interview"
+          element={
+            <InterviewPage
+              isSidebarOpen={isSidebarOpen}
+              toggleSidebar={toggleSidebar}
+            />
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 

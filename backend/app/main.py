@@ -50,9 +50,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     # 注意：数据库初始化由 Alembic 迁移管理，不需要自动建表
     # await init_db()
+    from app.interview.push_scheduler import start_interview_push_scheduler
+
+    start_interview_push_scheduler()
     logger.info("Application started (database managed by Alembic)")
     yield
     # 关闭时执行
+    from app.interview.push_scheduler import stop_interview_push_scheduler
+
+    await stop_interview_push_scheduler()
     await close_db()
     logger.info("Database connection closed")
     logger.info("Shutting down application")

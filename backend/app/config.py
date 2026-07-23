@@ -93,6 +93,15 @@ class Settings(BaseSettings):
     INTERVIEW_RESUME_CRAFT_MODEL: str = "template"
     INTERVIEW_RESUME_CRAFT_BASE_URL: str = ""  # optional OpenAI-compatible base
     INTERVIEW_RESUME_CRAFT_API_KEY: str = ""
+    INTERVIEW_DAILY_DOC_PROVIDER: str = ""  # empty → inherit HINT provider
+    INTERVIEW_DAILY_DOC_MODEL: str = ""  # empty → inherit HINT model (avoid gpt-4o-mini on DeepSeek)
+    INTERVIEW_DAILY_DOC_BASE_URL: str = ""  # falls back to HINT / RESUME_CRAFT base
+    INTERVIEW_DAILY_DOC_API_KEY: str = ""
+    # Interview oral STT (DashScope Paraformer); unused → zero cost
+    DASHSCOPE_API_KEY: str = ""
+    INTERVIEW_STT_MODEL: str = "paraformer-realtime-v2"
+    INTERVIEW_STT_SAMPLE_RATE: int = 16000
+    INTERVIEW_STT_MAX_BYTES: int = 15 * 1024 * 1024
 
     # Spider Agent (DeepAgents) — session artifacts live in Docker named volumes
     # Default slim is fine for static HTTP pages.

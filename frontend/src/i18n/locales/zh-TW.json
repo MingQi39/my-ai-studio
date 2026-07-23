@@ -70,7 +70,9 @@
     "deleteSessionTitle": "刪除對話",
     "deleteSessionMessage": "確定要刪除此對話嗎？此操作無法復原。",
     "sessionDeleted": "對話已刪除",
-    "deleteFailed": "刪除失敗"
+    "deleteFailed": "刪除失敗",
+    "collapse": "收合側邊欄",
+    "expand": "展開側邊欄"
   },
   "workspace": {
     "newChat": "新的對話",
@@ -267,5 +269,34 @@
   "messageContent": {
     "copy": "複製",
     "copied": "已複製"
+  },
+  "interviewNav": {
+    "settings": "設定",
+    "settingsHint": "提醒會自動儲存。修改崗位/難度/薪資後請點「套用目標」。關閉抽屜會丟棄未套用的草稿。",
+    "applyGoal": "套用目標",
+    "applyDeadline": "套用截止日期",
+    "generateQuestion": "產生面試題",
+    "switchQuestion": "換一題",
+    "goalChangedTitle": "目標已更改",
+    "goalChangedBody": "將依新目標出新題，目前未完成的練習會被放棄。已提交的進度不受影響。",
+    "applyGoalNow": "立刻換題",
+    "applyGoalLater": "稍後",
+    "deadlineTitle": "更新日期並重排學習計畫？",
+    "deadlineBody": "將依新截止日期重排未完成學習日；已完成的學習日會保留。目前練習不受影響。",
+    "deadlineConfirm": "儲存並重排",
+    "deadlineCancel": "取消",
+    "switchTitle": "換一題？",
+    "switchBody": "將放棄目前未完成的練習並抽取同主題新題。已提交進度不受影響。",
+    "switchConfirm": "確認換題",
+    "switchCancel": "取消",
+    "targetRole": "目標崗位",
+    "customRolePlaceholder": "或輸入具體崗位，如「資深前端 / AI 全端」",
+    "difficulty": "難度",
+    "salary": "薪資區間",
+    "deadline": "目標達成時間",
+    "deadlineHint": "系統會依剩餘天數倒排學習路線",
+    "reminder": "學習提醒",
+    "enableDesktopReminder": "開啟桌面提醒",
+    "pushNow": "立即推送"
   }
 }

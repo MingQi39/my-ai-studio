@@ -114,7 +114,7 @@ echo ""
 echo -e "${YELLOW}[步骤 5/5] 启动服务...${NC}"
 echo ""
 echo "  后端: http://localhost:10011 | http://192.168.110.131:10011"
-echo "  前端: http://localhost:11010 | http://192.168.110.131:11010"
+echo "  桌面端: Electron 窗口（Vite 开发服务 http://localhost:11010）"
 echo "  API 文档: http://localhost:10011/docs"
 echo ""
 echo "============================================"
@@ -162,15 +162,15 @@ fi
 FRONTEND_PORT=11010
 EXISTING_FRONTEND_PID=$(lsof -ti tcp:${FRONTEND_PORT} -sTCP:LISTEN 2>/dev/null || true)
 if [ -n "$EXISTING_FRONTEND_PID" ]; then
-    echo -e "${YELLOW}[警告] 端口 ${FRONTEND_PORT} 已被占用（PID: ${EXISTING_FRONTEND_PID}），跳过前端启动${NC}"
-    echo -e "${GREEN}[成功] 前端已在运行: http://localhost:${FRONTEND_PORT}${NC}"
-    echo -e "${BLUE}[提示] 若需重启前端: kill ${EXISTING_FRONTEND_PID}${NC}"
+    echo -e "${YELLOW}[警告] 端口 ${FRONTEND_PORT} 已被占用（PID: ${EXISTING_FRONTEND_PID}），跳过桌面端启动${NC}"
+    echo -e "${GREEN}[成功] 桌面端开发服务已在运行: http://localhost:${FRONTEND_PORT}${NC}"
+    echo -e "${BLUE}[提示] 若需重启桌面端: kill ${EXISTING_FRONTEND_PID}${NC}"
     exit 0
 fi
 
-echo -e "${BLUE}[信息] 启动前端服务...${NC}"
+echo -e "${BLUE}[信息] 启动桌面端（Electron）...${NC}"
 cd frontend
-npm run dev -- --force
+env -u ELECTRON_RUN_AS_NODE npm run dev:desktop
 
 # 如果前端退出，清理后端
 cleanup

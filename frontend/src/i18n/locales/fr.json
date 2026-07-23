@@ -70,7 +70,9 @@
     "deleteSessionTitle": "Supprimer la session",
     "deleteSessionMessage": "Voulez-vous vraiment supprimer cette session ? Cette action est irréversible.",
     "sessionDeleted": "Session supprimée",
-    "deleteFailed": "Échec de la suppression de la session"
+    "deleteFailed": "Échec de la suppression de la session",
+    "collapse": "Réduire la barre latérale",
+    "expand": "Développer la barre latérale"
   },
   "workspace": {
     "newChat": "Nouveau chat",
@@ -267,5 +269,34 @@
   "messageContent": {
     "copy": "Copier",
     "copied": "Copié"
+  },
+  "interviewNav": {
+    "settings": "Settings",
+    "settingsHint": "Reminders save automatically. After changing role/difficulty/salary, tap Apply goal. Closing discards unapplied drafts.",
+    "applyGoal": "Apply goal",
+    "applyDeadline": "Apply deadline",
+    "generateQuestion": "Generate question",
+    "switchQuestion": "Next question",
+    "goalChangedTitle": "Goal changed",
+    "goalChangedBody": "A new question will be generated for the new goal. Your unfinished attempt will be abandoned. Committed progress is kept.",
+    "applyGoalNow": "Switch now",
+    "applyGoalLater": "Later",
+    "deadlineTitle": "Update deadline and rebalance plan?",
+    "deadlineBody": "Unfinished learning days will be rebalanced. Completed days are kept. Current practice is unchanged.",
+    "deadlineConfirm": "Save & rebalance",
+    "deadlineCancel": "Cancel",
+    "switchTitle": "Switch question?",
+    "switchBody": "Abandon the unfinished attempt and draw another question on the same topic. Committed progress is kept.",
+    "switchConfirm": "Switch",
+    "switchCancel": "Cancel",
+    "targetRole": "Target role",
+    "customRolePlaceholder": "Or type a specific role, e.g. Senior Frontend",
+    "difficulty": "Difficulty",
+    "salary": "Salary band",
+    "deadline": "Target date",
+    "deadlineHint": "Learning path is paced from remaining days",
+    "reminder": "Study reminder",
+    "enableDesktopReminder": "Enable desktop reminders",
+    "pushNow": "Push now"
   }
 }

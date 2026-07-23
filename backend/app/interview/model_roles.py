@@ -7,7 +7,7 @@ from typing import Literal
 
 from app.config import settings
 
-InterviewModelPurpose = Literal["evaluate", "hint", "reflect", "embed", "resume_craft"]
+InterviewModelPurpose = Literal["evaluate", "hint", "reflect", "embed", "resume_craft", "daily_doc"]
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,25 @@ def resolve_model_role(purpose: InterviewModelPurpose) -> ModelRoleConfig:
             provider_hint=getattr(settings, "INTERVIEW_RESUME_CRAFT_PROVIDER", "template"),
             model_id=getattr(settings, "INTERVIEW_RESUME_CRAFT_MODEL", "template"),
             temperature=0.3,
+        )
+    if purpose == "daily_doc":
+        # Prefer dedicated daily_doc settings; otherwise inherit HINT so BYOK
+        # DeepSeek/OpenAI configs stay consistent (model must match the base URL).
+        provider = (
+            (getattr(settings, "INTERVIEW_DAILY_DOC_PROVIDER", "") or "").strip()
+            or getattr(settings, "INTERVIEW_HINT_PROVIDER", "openai_compatible")
+            or "openai_compatible"
+        )
+        model_id = (
+            (getattr(settings, "INTERVIEW_DAILY_DOC_MODEL", "") or "").strip()
+            or getattr(settings, "INTERVIEW_HINT_MODEL", "")
+            or "gpt-4o-mini"
+        )
+        return ModelRoleConfig(
+            purpose=purpose,
+            provider_hint=provider,
+            model_id=model_id,
+            temperature=0.35,
         )
     # evaluate: keyword rules by default; optional small model later
     return ModelRoleConfig(

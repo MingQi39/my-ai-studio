@@ -57,5 +57,5 @@
       "@radix-ui/react-accordion@1.2.3": ["./node_modules/@radix-ui/react-accordion"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "electron", "vite.config.ts"]
 }

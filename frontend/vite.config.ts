@@ -2,8 +2,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
+import electron from 'vite-plugin-electron/simple';
+import renderer from 'vite-plugin-electron-renderer';
 import net from 'node:net';
 import path from 'path';
+
+const isElectron = process.env.ELECTRON === '1';
 
 function isPortOpen(port: number, host = '127.0.0.1', timeoutMs = 400): Promise<boolean> {
   return new Promise((resolve) => {
@@ -41,12 +45,40 @@ export default defineConfig(async ({ command }) => {
   const devApiProxyTarget = await resolveDevApiProxyTarget();
 
   return {
+    define: {
+      'import.meta.env.VITE_IS_ELECTRON': JSON.stringify(isElectron ? 'true' : 'false'),
+    },
     plugins: [
       react(),
       command === 'serve' &&
+        !isElectron &&
         codeInspectorPlugin({
           bundler: 'vite',
         }),
+      isElectron &&
+        electron({
+          main: {
+            entry: 'electron/main.ts',
+            vite: {
+              build: {
+                rollupOptions: {
+                  external: ['electron', 'electron/main', 'electron/preload', 'electron/renderer'],
+                },
+              },
+            },
+          },
+          preload: {
+            input: 'electron/preload.ts',
+            vite: {
+              build: {
+                rollupOptions: {
+                  external: ['electron'],
+                },
+              },
+            },
+          },
+        }),
+      isElectron && renderer(),
     ].filter(Boolean),
     resolve: {
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
@@ -99,7 +131,7 @@ export default defineConfig(async ({ command }) => {
     server: {
       host: '0.0.0.0',
       port: 11010,
-      open: true,
+      open: !isElectron,
       proxy: {
         '/api': {
           target: devApiProxyTarget,
