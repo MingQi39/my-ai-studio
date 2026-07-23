@@ -36,7 +36,10 @@ def _day_entry(
         )
     else:
         doc_title, section_title, bullets = reading_unit_for_day(
-            stage_id, task_type=task_type, day_index_in_stage=day_index_in_stage
+            stage_id,
+            task_type=task_type,
+            day_index_in_stage=day_index_in_stage,
+            topic=topic,
         )
         unit_keys = (
             [f"{stage_id}:{day_index_in_stage % stage_unit_count(stage_id)}"]
@@ -331,20 +334,53 @@ def plan_from_deadline(
 
     role_set = {t.lower() for t in (role_topics or [])} if role_topics else None
     total_days = (deadline - start_date).days + 1
+    relevant_stages: list[LearningStage] = []
     incomplete: list[LearningStage] = []
     for stage in LEARNING_STAGES:
         relevant = True
         if role_set is not None:
             relevant = any(t.lower() in role_set for t in stage.topics) or not role_set
-        if relevant and not _stage_covered(stage, committed_topics):
+        if not relevant:
+            continue
+        relevant_stages.append(stage)
+        if not _stage_covered(stage, committed_topics):
             incomplete.append(stage)
 
     days_out: list[dict[str, Any]] = []
 
-    if not incomplete:
+    # Role bank has no overlap with AI curriculum stages (e.g. 前端/全栈) —
+    # schedule role topics as train days, do NOT fake "巩固拓宽" with React.
+    if not relevant_stages:
+        bank = list(role_topics) if role_topics else ["Agent"]
         for offset in range(total_days):
             day = start_date + timedelta(days=offset)
-            topic = role_topics[0] if role_topics else "Agent"
+            topic = bank[offset % len(bank)]
+            days_out.append(
+                _day_entry(
+                    day=day,
+                    task_type="train",
+                    stage_id=None,
+                    stage_title=f"{topic} 专题",
+                    topic=topic,
+                    goal=f"围绕 {topic} 建立可面试表达的闭环",
+                    day_index_in_stage=offset,
+                )
+            )
+        return {
+            "deadline": deadline.isoformat(),
+            "start_date": start_date.isoformat(),
+            "total_days": total_days,
+            "days": days_out,
+            "summary": f"共 {total_days} 天，按岗位主题轮转训练（当前路线阶段与岗位题库无交集）",
+            "feasible": True,
+            "max_units_per_day": 1,
+        }
+
+    if not incomplete:
+        bank = list(role_topics) if role_topics else ["Agent"]
+        for offset in range(total_days):
+            day = start_date + timedelta(days=offset)
+            topic = bank[offset % len(bank)]
             days_out.append(
                 _day_entry(
                     day=day,

@@ -127,11 +127,22 @@ class InterviewService:
     async def update_profile(self, user_id: UUID, data: InterviewProfileUpdate) -> InterviewProfile:
         profile = await self.get_or_create_profile(user_id)
         old_deadline = profile.target_deadline
-        for field, value in data.model_dump(exclude_unset=True).items():
+        old_role = (profile.target_role or "").strip() or None
+        payload = data.model_dump(exclude_unset=True)
+        for field, value in payload.items():
             setattr(profile, field, value)
         await self.db.commit()
         await self.db.refresh(profile)
-        if profile.target_deadline and profile.target_deadline != old_deadline:
+        new_role = (profile.target_role or "").strip() or None
+        role_changed = "target_role" in payload and new_role != old_role
+        deadline_changed = (
+            profile.target_deadline is not None and profile.target_deadline != old_deadline
+        )
+        if profile.target_deadline and (deadline_changed or role_changed):
+            if role_changed:
+                # Drop stale curriculum (e.g. 前端 React 巩固日) before rebuild.
+                profile.learning_plan = {}
+                await self.db.commit()
             await generate_learning_plan(self.db, profile)
         return profile
 

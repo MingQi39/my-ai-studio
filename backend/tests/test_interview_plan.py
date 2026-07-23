@@ -1,8 +1,192 @@
 """Tests for deadline-based learning plan generation."""
 
 from datetime import date, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.interview.learning_path import plan_from_deadline, today_plan_tasks
+from app.interview.training import topics_for_role
+
+
+def test_ai_role_plan_never_includes_react():
+    start = date(2026, 7, 23)
+    plan = plan_from_deadline(
+        start_date=start,
+        deadline=start + timedelta(days=30),
+        committed_topics=set(),
+        role_topics=list(topics_for_role("AI 应用工程")),
+    )
+    topics = {day["topic"] for day in plan["days"]}
+    assert "React" not in topics
+    assert "LLM" in topics
+
+
+def test_frontend_role_without_ai_stages_schedules_role_topics_as_train():
+    """前端 topic bank 与 AI 路线阶段无交集时，不应假装「巩固拓宽」且整天 React。"""
+    start = date(2026, 7, 23)
+    plan = plan_from_deadline(
+        start_date=start,
+        deadline=start + timedelta(days=2),
+        committed_topics=set(),
+        role_topics=list(topics_for_role("前端")),
+    )
+    assert plan["days"]
+    assert all(d["task_type"] == "train" for d in plan["days"])
+    assert {d["topic"] for d in plan["days"]} <= set(topics_for_role("前端"))
+    assert all(d["section_title"] != "巩固拓宽" for d in plan["days"])
+
+
+def test_stale_frontend_plan_mismatches_ai_role():
+    from app.interview.plan_service import plan_mismatches_role
+
+    stale = {
+        "days": [
+            {
+                "date": "2026-07-23",
+                "topic": "React",
+                "task_type": "consolidate",
+                "title": "巩固与拓宽",
+                "section_title": "巩固拓宽",
+                "doc_title": "综合巩固",
+            }
+        ]
+    }
+    assert plan_mismatches_role(stale, list(topics_for_role("AI 应用工程"))) is True
+    assert plan_mismatches_role(stale, list(topics_for_role("前端"))) is False
+
+
+@pytest.mark.asyncio
+async def test_update_profile_role_change_rebuilds_plan():
+    from app.interview.schemas import InterviewProfileUpdate
+    from app.interview.services import InterviewService
+
+    profile = SimpleNamespace(
+        target_role="前端",
+        target_level="中级",
+        target_deadline=date(2027, 4, 22),
+        learning_plan={
+            "days": [
+                {
+                    "date": "2026-07-23",
+                    "topic": "React",
+                    "task_type": "consolidate",
+                    "section_title": "巩固拓宽",
+                    "doc_title": "综合巩固",
+                }
+            ]
+        },
+        keywords=[],
+    )
+    db = AsyncMock()
+    svc = InterviewService(db)
+    with (
+        patch.object(svc, "get_or_create_profile", AsyncMock(return_value=profile)),
+        patch("app.interview.services.generate_learning_plan", AsyncMock()) as gen,
+    ):
+        await svc.update_profile(
+            "00000000-0000-0000-0000-000000000001",
+            InterviewProfileUpdate(target_role="AI 应用工程"),
+        )
+    assert profile.target_role == "AI 应用工程"
+    assert profile.learning_plan in (None, {})
+    gen.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_today_plan_heals_react_plan_under_ai_role():
+    from app.interview.plan_service import get_today_plan
+
+    profile = SimpleNamespace(
+        id="p1",
+        target_role="AI 应用工程",
+        target_level="中级",
+        target_deadline=date(2027, 4, 22),
+        push_timezone="Asia/Shanghai",
+        push_frequency="weekdays",
+        learning_plan={
+            "deadline": "2027-04-22",
+            "start_date": "2026-07-23",
+            "target_role": "前端",
+            "days": [
+                {
+                    "date": "2026-07-23",
+                    "topic": "React",
+                    "task_type": "consolidate",
+                    "title": "巩固与拓宽",
+                    "section_title": "巩固拓宽",
+                    "doc_title": "综合巩固",
+                    "goal": "x",
+                    "reading_bullets": ["a", "b", "c"],
+                    "learning_status": "pending",
+                }
+            ],
+        },
+    )
+    healed = {
+        "deadline": "2027-04-22",
+        "start_date": "2026-07-23",
+        "target_role": "AI 应用工程",
+        "days": [
+                {
+                    "date": "2026-07-23",
+                    "topic": "LLM",
+                    "task_type": "train",
+                    "title": "大模型与 Prompt",
+                    "section_title": "Transformer 与注意力机制",
+                    "doc_title": "大模型与 Prompt 工程",
+                    "goal": "Transformer",
+                    "message": "LLM",
+                    "reading_bullets": ["自注意力"],
+                    "learning_status": "pending",
+                }
+        ],
+    }
+
+    async def _fake_generate(db, profile):
+        profile.learning_plan = healed
+        return SimpleNamespace(summary="healed")
+
+    db = AsyncMock()
+    execute_result = SimpleNamespace(scalars=lambda: SimpleNamespace(__iter__=lambda self: iter([])))
+    # Also support list(scalars()) used by due review query
+    class _Scalars:
+        def all(self):
+            return []
+
+        def __iter__(self):
+            return iter([])
+
+    db.execute = AsyncMock(return_value=SimpleNamespace(scalars=lambda: _Scalars()))
+    with (
+        patch("app.interview.plan_service._load_plan_context", AsyncMock(return_value=(set(), list(topics_for_role("AI 应用工程"))))),
+        patch("app.interview.plan_service.generate_learning_plan", side_effect=_fake_generate) as gen,
+        patch("app.interview.plan_service.generate_daily_learning_doc", AsyncMock()) as gen_doc,
+        patch("app.interview.plan_service._persist_generated_doc", AsyncMock()),
+        patch("app.interview.plan_service.date") as mock_date,
+    ):
+        mock_date.today.return_value = date(2026, 7, 23)
+        mock_date.fromisoformat = date.fromisoformat
+        from app.interview.schemas import TodayLearningDoc
+
+        gen_doc.return_value = TodayLearningDoc(
+            doc_title="大模型与 Prompt 工程",
+            section_title="Transformer 与注意力机制",
+            topic="LLM",
+            reading_bullets=["自注意力"],
+            markdown_body="## 知识讲解\n今日主题 **LLM**\n\n## 面试题与详解\n**答案**\nx",
+            generated_by="template",
+            format_version="qa_v1",
+        )
+        resp = await get_today_plan(db, profile)
+
+    gen.assert_awaited_once()
+    assert resp.tasks
+    assert resp.tasks[0].topic == "LLM"
+    assert resp.learning_doc is not None
+    assert resp.learning_doc.topic == "LLM"
+    assert "React" not in (resp.learning_doc.markdown_body or "")
 
 
 def test_plan_from_deadline_allocates_all_days():

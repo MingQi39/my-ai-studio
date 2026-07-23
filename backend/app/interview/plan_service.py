@@ -90,17 +90,44 @@ def _plan_response(profile: InterviewProfile, plan: dict[str, Any]) -> LearningP
     )
 
 
+def plan_mismatches_role(plan: dict[str, Any] | None, role_topics: list[str] | None) -> bool:
+    """True when stored plan days use topics outside the current role bank.
+
+    Typical case: plan was built under 前端/全栈 (topic=React consolidate), then
+    the user switched to AI 应用工程 without regenerating — template handouts
+    would still say「今日主题 React」while 今日目标 cites the new role.
+    """
+    if not plan or not role_topics:
+        return False
+    role_set = {t.lower() for t in role_topics if t}
+    if not role_set:
+        return False
+    for day in plan.get("days") or []:
+        if not isinstance(day, dict):
+            continue
+        topic = str(day.get("topic") or "").strip()
+        if topic and topic.lower() not in role_set:
+            return True
+    return False
+
+
 async def generate_learning_plan(db: AsyncSession, profile: InterviewProfile) -> LearningPlanResponse:
     if profile.target_deadline is None:
         return LearningPlanResponse(summary="请先设置目标达成时间")
     committed, role_topics = await _load_plan_context(db, profile)
+    existing = profile.learning_plan or {}
+    # Drop incompatible curriculum entirely (e.g. React consolidate under AI role).
+    if plan_mismatches_role(existing, role_topics):
+        existing = {}
     plan = rebalance_plan_preserving_completed(
-        existing=profile.learning_plan or {},
+        existing=existing,
         start_date=date.today(),
         deadline=profile.target_deadline,
         committed_topics=committed,
         role_topics=role_topics,
     )
+    plan["target_role"] = profile.target_role
+    plan["role_topics"] = list(role_topics)
     profile.learning_plan = plan
     profile.plan_generated_at = _utcnow()
     await db.commit()
@@ -110,7 +137,13 @@ async def generate_learning_plan(db: AsyncSession, profile: InterviewProfile) ->
 
 async def get_learning_plan(db: AsyncSession, profile: InterviewProfile) -> LearningPlanResponse:
     plan = profile.learning_plan or {}
-    if not plan and profile.target_deadline:
+    committed, role_topics = await _load_plan_context(db, profile)
+    needs_build = bool(profile.target_deadline) and (
+        not plan
+        or plan_mismatches_role(plan, role_topics)
+        or (plan.get("target_role") and plan.get("target_role") != profile.target_role)
+    )
+    if needs_build:
         return await generate_learning_plan(db, profile)
     return _plan_response(profile, plan)
 
@@ -136,7 +169,10 @@ def _enrich_task_if_needed(task: PlanDayTask, day_index: int = 0) -> PlanDayTask
     if task.reading_bullets and task.doc_title:
         return task
     doc_title, section_title, bullets = reading_unit_for_day(
-        task.stage_id, task_type=task.task_type, day_index_in_stage=day_index
+        task.stage_id,
+        task_type=task.task_type,
+        day_index_in_stage=day_index,
+        topic=task.topic,
     )
     return task.model_copy(
         update={
@@ -194,8 +230,16 @@ async def get_today_plan(
     today = date.today()
     today_iso = today.isoformat()
     plan = profile.learning_plan or {}
+    _, role_topics = await _load_plan_context(db, profile)
+    # Heal stale plans left after role switches (React consolidate under AI role).
+    if profile.target_deadline and (
+        plan_mismatches_role(plan, role_topics)
+        or (plan.get("target_role") and plan.get("target_role") != profile.target_role)
+    ):
+        await generate_learning_plan(db, profile)
+        plan = profile.learning_plan or {}
     # If deadline moved earlier vs stored plan, rebalance density automatically.
-    if profile.target_deadline and plan.get("deadline"):
+    elif profile.target_deadline and plan.get("deadline"):
         try:
             stored_deadline = date.fromisoformat(str(plan["deadline"]))
             if profile.target_deadline < stored_deadline:

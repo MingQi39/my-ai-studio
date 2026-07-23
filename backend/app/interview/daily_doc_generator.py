@@ -440,7 +440,10 @@ async def generate_daily_learning_doc(
 
     if not task.reading_bullets or not task.doc_title:
         doc_title, section_title, bullets = reading_unit_for_day(
-            task.stage_id, task_type=task.task_type, day_index_in_stage=day_offset
+            task.stage_id,
+            task_type=task.task_type,
+            day_index_in_stage=day_offset,
+            topic=task.topic,
         )
         task = task.model_copy(
             update={

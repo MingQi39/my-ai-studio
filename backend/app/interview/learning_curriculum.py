@@ -233,19 +233,36 @@ CONSOLIDATE_UNIT = ReadingUnit(
 )
 
 
+def _topic_freestyle_unit(topic: str | None) -> tuple[str, str, tuple[str, ...]]:
+    label = (topic or "").strip() or "今日主题"
+    return (
+        f"{label} 专题",
+        f"{label} 面试表达",
+        (
+            f"用自己的话定义「{label}」并说明它解决什么问题",
+            f"讲清 {label} 的关键机制（输入 → 处理 → 输出）",
+            f"对比一个替代方案，说清为什么选 {label}（或何时不选）",
+        ),
+    )
+
+
 def reading_unit_for_day(
     stage_id: str | None,
     *,
     task_type: str,
     day_index_in_stage: int,
+    topic: str | None = None,
 ) -> tuple[str, str, tuple[str, ...]]:
     """Return (doc_title, section_title, bullets) for a plan day."""
     if task_type == "review":
         meta = STAGE_DOC_META.get(stage_id or "", StageDocMeta("复习", ""))
         return meta.doc_title, REVIEW_UNIT.section_title, REVIEW_UNIT.bullets
 
-    if task_type == "consolidate" or not stage_id:
+    if task_type == "consolidate":
         return "综合巩固", CONSOLIDATE_UNIT.section_title, CONSOLIDATE_UNIT.bullets
+
+    if not stage_id:
+        return _topic_freestyle_unit(topic)
 
     meta = STAGE_DOC_META.get(stage_id)
     units = STAGE_READING_UNITS.get(stage_id, ())
@@ -279,8 +296,11 @@ def reading_bundle_for_unit_indices(
     if task_type == "review":
         meta = STAGE_DOC_META.get(stage_id or "", StageDocMeta("复习", ""))
         return meta.doc_title, REVIEW_UNIT.section_title, REVIEW_UNIT.bullets, []
-    if task_type == "consolidate" or not stage_id:
+    if task_type == "consolidate":
         return "综合巩固", CONSOLIDATE_UNIT.section_title, CONSOLIDATE_UNIT.bullets, []
+    if not stage_id:
+        doc_title, section_title, bullets = _topic_freestyle_unit(None)
+        return doc_title, section_title, bullets, []
 
     meta = STAGE_DOC_META.get(stage_id)
     units = STAGE_READING_UNITS.get(stage_id, ())
