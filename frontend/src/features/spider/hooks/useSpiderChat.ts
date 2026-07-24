@@ -5,6 +5,10 @@ import { useTranslation } from 'react-i18next';
 import type { ChatToolRun } from '@/components/chat';
 import type { StudioChatMessage } from '@/hooks/studioChat/types';
 import { SSEClient } from '@/lib/sseClient';
+import {
+  cancelResumableAgentStream,
+  fetchResumableAgentStreamStatus,
+} from '@/lib/resumableAgentStream';
 
 import { useSpiderRuntime } from '@/features/spider/SpiderRuntimeContext';
 import { SPIDER_API_BASE, spiderHeaders } from '@/features/spider/services/api/client';
@@ -29,6 +33,8 @@ export function useSpiderChat() {
     resume: boolean;
     seedToolRuns?: ChatToolRun[];
     seedTodos?: SpiderTodoItem[];
+    streamUrl?: string;
+    streamMethod?: 'GET' | 'POST';
   }) => {
     const {
       addMessage,
@@ -71,7 +77,11 @@ export function useSpiderChat() {
     let hasDoneEvent = false;
     let hasErrorEvent = false;
     const toolRuns: ChatToolRun[] = params.seedToolRuns ? [...params.seedToolRuns] : [];
-    const pendingTools = new Map<string, ChatToolRun>();
+    const pendingTools = new Map<string, ChatToolRun>(
+      toolRuns
+        .filter((run) => run.call_id)
+        .map((run) => [String(run.call_id), run]),
+    );
     let todos: SpiderTodoItem[] | undefined = params.seedTodos;
 
     const syncAssistant = (patch: {
@@ -121,17 +131,20 @@ export function useSpiderChat() {
     };
 
     const client = new SSEClient<SpiderSSEEvent>({
-      url: `${SPIDER_API_BASE}/agent/run`,
-      method: 'POST',
+      url: params.streamUrl ?? `${SPIDER_API_BASE}/agent/run`,
+      method: params.streamMethod ?? 'POST',
       headers: spiderHeaders(),
-      body: JSON.stringify({
-        message: text,
-        session_id: useSpiderChatStore.getState().currentSessionId,
-        model_config_id: modelConfigId,
-        target_url: targetUrl || null,
-        cookies: cookies.trim() || null,
-        resume,
-      }),
+      body:
+        params.streamMethod === 'GET'
+          ? undefined
+          : JSON.stringify({
+              message: text,
+              session_id: useSpiderChatStore.getState().currentSessionId,
+              model_config_id: modelConfigId,
+              target_url: targetUrl || null,
+              cookies: cookies.trim() || null,
+              resume,
+            }),
       onEvent: (event) => {
         if (event.type === 'session' && 'session_id' in event) {
           const sessionId = String(event.session_id);
@@ -147,15 +160,21 @@ export function useSpiderChat() {
         }
 
         if (event.type === 'tool_call_start' && 'call_id' in event) {
-          const run: ChatToolRun = {
-            call_id: event.call_id,
-            tool_name: event.tool_name,
-            raw_tool_name: event.raw_tool_name,
-            tool_input: event.tool_args,
-            status: 'running',
-          };
+          const run =
+            pendingTools.get(event.call_id)
+            ?? {
+              call_id: event.call_id,
+              tool_name: event.tool_name,
+              status: 'running' as const,
+            };
+          run.tool_name = event.tool_name;
+          run.raw_tool_name = event.raw_tool_name;
+          run.tool_input = event.tool_args;
+          run.status = 'running';
+          if (!pendingTools.has(event.call_id)) {
+            toolRuns.push(run);
+          }
           pendingTools.set(event.call_id, run);
-          toolRuns.push(run);
           setWorkingStatus(t('spider.chat.runningTool', { tool: event.tool_name }));
         }
 
@@ -336,11 +355,77 @@ export function useSpiderChat() {
     });
   };
 
+  const resumeActiveGeneration = async (
+    sessionId: string,
+    restoredMessages: StudioChatMessage[],
+  ): Promise<boolean> => {
+    const status = await fetchResumableAgentStreamStatus(
+      `${SPIDER_API_BASE}/agent/status/${sessionId}`,
+      spiderHeaders(),
+    );
+    if (!status.is_streaming) return false;
+    if (useSpiderChatStore.getState().currentSessionId !== sessionId) return false;
+
+    const existing = [...restoredMessages]
+      .reverse()
+      .find((message) => message.role === 'assistant' && message.isComplete === false);
+    const assistantMessageId = existing?.id ?? `assistant-resume-${sessionId}`;
+
+    if (existing) {
+      useSpiderChatStore.getState().setMessages(
+        restoredMessages.map((message) =>
+          message.id === assistantMessageId
+            ? {
+                ...message,
+                content: '',
+                isThinking: true,
+                statusLabel: t('spider.chat.thinking'),
+                toolRuns: message.toolRuns,
+                failure: undefined,
+              }
+            : message,
+        ),
+      );
+    } else {
+      useSpiderChatStore.getState().setMessages([
+        ...restoredMessages,
+        {
+          id: assistantMessageId,
+          role: 'assistant',
+          content: '',
+          isThinking: true,
+          statusLabel: t('spider.chat.thinking'),
+          toolRuns: [],
+        },
+      ]);
+    }
+
+    useSpiderChatStore.getState().setRestoreInterruptedHint(false);
+    await startRun({
+      text: '',
+      assistantMessageId,
+      appendUserMessage: false,
+      resume: false,
+      seedToolRuns: existing?.toolRuns,
+      seedTodos: existing?.todos,
+      streamUrl: `${SPIDER_API_BASE}/agent/resume/${sessionId}`,
+      streamMethod: 'GET',
+    });
+    return true;
+  };
+
   const cancelCurrentRequest = () => {
     currentClientRef.current?.cancel();
     currentClientRef.current = null;
+    const { currentSessionId } = useSpiderChatStore.getState();
+    if (currentSessionId) {
+      void cancelResumableAgentStream(
+        `${SPIDER_API_BASE}/agent/cancel/${currentSessionId}`,
+        spiderHeaders(),
+      ).catch((error) => console.error('Failed to cancel spider generation:', error));
+    }
     useSpiderChatStore.getState().setGenerating(false);
   };
 
-  return { sendMessage, resumeTask, cancelCurrentRequest };
+  return { sendMessage, resumeTask, resumeActiveGeneration, cancelCurrentRequest };
 }

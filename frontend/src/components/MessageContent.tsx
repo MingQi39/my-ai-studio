@@ -222,7 +222,10 @@ export function MessageContent({
                             style={{
                                 color: '#3b82f6',
                                 textDecoration: 'underline',
-                                textUnderlineOffset: '2px'
+                                textUnderlineOffset: '2px',
+                                overflowWrap: 'anywhere',
+                                wordBreak: 'break-word',
+                                maxWidth: '100%'
                             }}
                         >
                             {children}
@@ -303,7 +306,16 @@ export function MessageContent({
     }, [displayedContent, isDarkMode, copiedCode, handleCopyCode, t]);
 
     return (
-        <div style={{ color: 'var(--text-primary)', lineHeight: '1.75' }}>
+        <div
+            style={{
+                color: 'var(--text-primary)',
+                lineHeight: '1.75',
+                minWidth: 0,
+                maxWidth: '100%',
+                overflowWrap: 'anywhere',
+                wordBreak: 'break-word'
+            }}
+        >
             {renderedContent}
             {isStreaming && displayedContent.length < content.length && (
                 <span style={{

@@ -11,7 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.core.resumable_stream import resumable_stream_key, resumable_stream_manager
+from app.db.database import async_session_factory
 from app.dependencies import get_current_user_auth, get_model_service, get_session_service
+from app.models.database import SessionType
 from app.services.model_service import ModelService
 from app.services.session_service import SessionService
 from app.travel.config.defaults import Settings
@@ -47,7 +50,11 @@ from app.travel.tools.builtin import register_builtin_tools
 router = APIRouter(prefix="/travel", tags=["travel"])
 
 SECRET_FIELDS = ("amap_api_key", "tavily_api_key", "juhe_train_api_key", "juhe_flight_api_key")
-TRAVEL_SYSTEM_PROMPT = "你是一个旅行规划助手。请根据用户需求提供建议。"
+TRAVEL_SYSTEM_PROMPT = (
+    "你是一个旅行规划助手。请根据用户需求提供建议。"
+    "规划完整行程前必须确认出发地；如果用户没有提供，只追问从哪里出发，"
+    "不得猜测或使用默认城市，也不要提前输出完整行程。"
+)
 
 
 class ChatMessage(BaseModel):
@@ -275,39 +282,51 @@ async def travel_chat(
     user_settings = get_user_travel_settings(user_id)
     max_rounds = request.max_rounds or user_settings.max_rounds
 
-    async def event_stream() -> AsyncIterator[dict]:
-        yield {"type": "session", "session_id": str(session_id), "created": created}
+    async def event_stream() -> AsyncIterator[dict[str, Any]]:
+        async with async_session_factory() as background_db:
+            background_sessions = SessionService(background_db)
+            yield {"type": "session", "session_id": str(session_id), "created": created}
 
-        if request.mode == "llm":
-            llm_service = LLMService(openai_client=openai_client, model_name=model_name)
-            messages = [{"role": "system", "content": TRAVEL_SYSTEM_PROMPT}]
-            for msg in conversation_history:
-                messages.append(msg)
-            messages.append({"role": "user", "content": request.message})
-            inner = llm_service.stream_with_history(messages)
-        else:
-            react_agent = ReActAgent(
-                tools_registry=_create_registry(),
-                openai_client=openai_client,
-                model_name=model_name,
-            )
-            inner = safe_agent_stream(
-                react_agent,
-                request.message,
-                max_rounds,
-                conversation_history=conversation_history,
-            )
+            if request.mode == "llm":
+                llm_service = LLMService(openai_client=openai_client, model_name=model_name)
+                messages = [{"role": "system", "content": TRAVEL_SYSTEM_PROMPT}]
+                for msg in conversation_history:
+                    messages.append(msg)
+                messages.append({"role": "user", "content": request.message})
+                inner = llm_service.stream_with_history(messages)
+            else:
+                react_agent = ReActAgent(
+                    tools_registry=_create_registry(),
+                    openai_client=openai_client,
+                    model_name=model_name,
+                )
+                inner = safe_agent_stream(
+                    react_agent,
+                    request.message,
+                    max_rounds,
+                    conversation_history=conversation_history,
+                )
 
-        async for event in _persist_chat_stream(
-            inner,
-            session_service,
-            session_id,
-            request.mode,
-        ):
-            yield event
+            async for event in _persist_chat_stream(
+                inner,
+                background_sessions,
+                session_id,
+                request.mode,
+            ):
+                yield event
+
+    stream_key = resumable_stream_key("travel", user_id, session_id)
+    try:
+        await resumable_stream_manager.start(
+            stream_key,
+            event_stream,
+            metadata={"mode": request.mode},
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return StreamingResponse(
-        format_sse_stream(event_stream()),
+        format_sse_stream(resumable_stream_manager.subscribe(stream_key)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -315,6 +334,67 @@ async def travel_chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+async def _validate_travel_stream_session(
+    session_id: UUID,
+    user_id: UUID,
+    session_service: SessionService,
+) -> None:
+    session = await session_service.get_session(session_id, user_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.session_type != SessionType.travel:
+        raise HTTPException(status_code=400, detail="Not a travel session")
+
+
+@router.get("/chat/status/{session_id}")
+async def travel_chat_status(
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service: SessionService = Depends(get_session_service),
+) -> dict[str, Any]:
+    await _validate_travel_stream_session(session_id, user_id, session_service)
+    return {
+        "session_id": str(session_id),
+        **resumable_stream_manager.status(
+            resumable_stream_key("travel", user_id, session_id)
+        ),
+    }
+
+
+@router.get("/chat/resume/{session_id}")
+async def travel_chat_resume(
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service: SessionService = Depends(get_session_service),
+) -> StreamingResponse:
+    await _validate_travel_stream_session(session_id, user_id, session_service)
+    stream_key = resumable_stream_key("travel", user_id, session_id)
+    if resumable_stream_manager.get(stream_key) is None:
+        raise HTTPException(status_code=404, detail="No resumable stream for this session")
+    return StreamingResponse(
+        format_sse_stream(resumable_stream_manager.subscribe(stream_key)),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/chat/cancel/{session_id}")
+async def travel_chat_cancel(
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service: SessionService = Depends(get_session_service),
+) -> dict[str, bool]:
+    await _validate_travel_stream_session(session_id, user_id, session_service)
+    cancelled = await resumable_stream_manager.cancel(
+        resumable_stream_key("travel", user_id, session_id)
+    )
+    return {"cancelled": cancelled}
 
 
 @router.post("/compare")

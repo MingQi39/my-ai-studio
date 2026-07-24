@@ -74,6 +74,16 @@
     "collapse": "Seitenleiste einklappen",
     "expand": "Seitenleiste ausklappen"
   },
+  "desktopTabs": {
+    "tabBar": "Geöffnete Seiten",
+    "newTab": "Neuer Tab",
+    "pin": "Tab anheften",
+    "unpin": "Tab lösen",
+    "close": "Tab schließen",
+    "pinned": "Angeheftet",
+    "chat": "KI-Chat",
+    "interview": "Interview-Navigator"
+  },
   "workspace": {
     "newChat": "Neuer Chat",
     "newChatCreated": "Neue Unterhaltung gestartet",

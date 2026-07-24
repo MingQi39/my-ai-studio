@@ -50,7 +50,7 @@ export function ChatToolRunBlock({ run, isDarkMode = false }: ChatToolRunBlockPr
       {run.tool_output && (
         <pre
           className={cn(
-            'px-4 py-3 text-xs font-mono overflow-x-auto max-h-48 overflow-y-auto',
+            'px-4 py-3 text-xs font-mono whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-h-48 overflow-y-auto',
             isDarkMode ? 'bg-[#0F172A] text-slate-300' : 'bg-slate-50 text-slate-700',
           )}
         >

@@ -16,8 +16,11 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.resumable_stream import resumable_stream_key, resumable_stream_manager
+from app.db.database import async_session_factory
 from app.dependencies import get_current_user_auth, get_db, get_model_service, get_session_service
 from app.models.database import SessionType
+from app.services.session_service import SessionService
 from app.spider.schemas import SpiderAgentRequest, SpiderWorkspaceFile, SpiderWorkspaceResponse
 from app.spider.services.chat_persistence import (
     find_resumable_assistant_message,
@@ -148,10 +151,7 @@ async def spider_agent_run(
     user_id: UUID = Depends(get_current_user_auth),
     model_service=Depends(get_model_service),
     session_service=Depends(get_session_service),
-    db: AsyncSession = Depends(get_db),
 ):
-    del db
-
     try:
         normalized_cookies = normalize_cookies(request.cookies)
     except CookieValidationError as exc:
@@ -204,46 +204,58 @@ async def spider_agent_run(
     ctx = await resolve_travel_llm(model_service, user_id, request.model_config_id)
 
     async def event_stream() -> AsyncIterator[dict[str, Any]]:
-        set_request_cookies(normalized_cookies)
-        try:
-            yield {"type": "session", "session_id": str(session_id), "created": created}
-            if runtime == "pipeline":
-                inner = spider_pipeline_stream(
-                    message=request.message,
-                    conversation_history=conversation_history,
-                    user_id=str(user_id),
-                    session_id=str(session_id),
-                    llm_api_key=ctx.api_key,
-                    llm_base_url=ctx.base_url,
-                    model_name=ctx.model_id,
-                    target_url=request.target_url,
-                    resume=resume,
-                )
-            else:
-                inner = spider_agent_stream(
-                    message=request.message,
-                    conversation_history=conversation_history,
-                    user_id=str(user_id),
-                    session_id=str(session_id),
-                    llm_api_key=ctx.api_key,
-                    llm_base_url=ctx.base_url,
-                    model_name=ctx.model_id,
-                    target_url=request.target_url,
-                )
-            async for event in _persist_spider_stream(
-                inner,
-                session_service,
-                session_id,
-                assistant_message_id=resume_message_id,
-                seed_tool_trace=seed_tool_trace,
-                seed_todos=seed_todos,
-            ):
-                yield event
-        finally:
-            clear_request_cookies()
+        async with async_session_factory() as background_db:
+            background_sessions = SessionService(background_db)
+            set_request_cookies(normalized_cookies)
+            try:
+                yield {"type": "session", "session_id": str(session_id), "created": created}
+                if runtime == "pipeline":
+                    inner = spider_pipeline_stream(
+                        message=request.message,
+                        conversation_history=conversation_history,
+                        user_id=str(user_id),
+                        session_id=str(session_id),
+                        llm_api_key=ctx.api_key,
+                        llm_base_url=ctx.base_url,
+                        model_name=ctx.model_id,
+                        target_url=request.target_url,
+                        resume=resume,
+                    )
+                else:
+                    inner = spider_agent_stream(
+                        message=request.message,
+                        conversation_history=conversation_history,
+                        user_id=str(user_id),
+                        session_id=str(session_id),
+                        llm_api_key=ctx.api_key,
+                        llm_base_url=ctx.base_url,
+                        model_name=ctx.model_id,
+                        target_url=request.target_url,
+                    )
+                async for event in _persist_spider_stream(
+                    inner,
+                    background_sessions,
+                    session_id,
+                    assistant_message_id=resume_message_id,
+                    seed_tool_trace=seed_tool_trace,
+                    seed_todos=seed_todos,
+                ):
+                    yield event
+            finally:
+                clear_request_cookies()
+
+    stream_key = resumable_stream_key("spider", user_id, session_id)
+    try:
+        await resumable_stream_manager.start(
+            stream_key,
+            event_stream,
+            metadata={"runtime": runtime},
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return StreamingResponse(
-        format_sse_stream(event_stream()),
+        format_sse_stream(resumable_stream_manager.subscribe(stream_key)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -251,6 +263,67 @@ async def spider_agent_run(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+async def _validate_spider_stream_session(
+    session_id: UUID,
+    user_id: UUID,
+    session_service,
+) -> None:
+    session = await session_service.get_session(session_id, user_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.session_type != SessionType.spider:
+        raise HTTPException(status_code=400, detail="Not a spider session")
+
+
+@router.get("/agent/status/{session_id}")
+async def spider_agent_status(
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service=Depends(get_session_service),
+) -> dict[str, Any]:
+    await _validate_spider_stream_session(session_id, user_id, session_service)
+    return {
+        "session_id": str(session_id),
+        **resumable_stream_manager.status(
+            resumable_stream_key("spider", user_id, session_id)
+        ),
+    }
+
+
+@router.get("/agent/resume/{session_id}")
+async def spider_agent_resume(
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service=Depends(get_session_service),
+) -> StreamingResponse:
+    await _validate_spider_stream_session(session_id, user_id, session_service)
+    stream_key = resumable_stream_key("spider", user_id, session_id)
+    if resumable_stream_manager.get(stream_key) is None:
+        raise HTTPException(status_code=404, detail="No resumable stream for this session")
+    return StreamingResponse(
+        format_sse_stream(resumable_stream_manager.subscribe(stream_key)),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/agent/cancel/{session_id}")
+async def spider_agent_cancel(
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service=Depends(get_session_service),
+) -> dict[str, bool]:
+    await _validate_spider_stream_session(session_id, user_id, session_service)
+    cancelled = await resumable_stream_manager.cancel(
+        resumable_stream_key("spider", user_id, session_id)
+    )
+    return {"cancelled": cancelled}
 
 
 @router.get("/workspace/{session_id}", response_model=SpiderWorkspaceResponse)

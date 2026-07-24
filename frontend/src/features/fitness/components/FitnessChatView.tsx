@@ -46,9 +46,15 @@ export function FitnessChatView({
 
   const { todaySummary } = useFitnessTodaySummary(true);
   useFitnessSessionRoute();
-  useFitnessSessionRestore();
 
-  const { sendMessage, approvePending, cancelPendingApproval, cancelCurrentRequest } = useFitnessChat();
+  const {
+    sendMessage,
+    resumeActiveGeneration,
+    approvePending,
+    cancelPendingApproval,
+    cancelCurrentRequest,
+  } = useFitnessChat();
+  useFitnessSessionRestore(resumeActiveGeneration);
   const [inputValue, setInputValue] = useState('');
 
   const { scrollContainerRef, scrollSentinelRef, showJumpButton, scrollToBottom } = useChatAutoScroll({

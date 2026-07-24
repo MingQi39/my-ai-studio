@@ -47,8 +47,12 @@ export function TravelChatView({
   const { t } = useTranslation();
   const { messages, isGenerating, isLoadingHistory, chatMode, setChatMode, currentSessionId } = useChatStore();
   useTravelSessionRoute();
-  useTravelSessionRestore();
-  const { sendMessage: sendChatMessage, cancelCurrentRequest: cancelChatRequest } = useChat();
+  const {
+    sendMessage: sendChatMessage,
+    resumeActiveGeneration,
+    cancelCurrentRequest: cancelChatRequest,
+  } = useChat();
+  useTravelSessionRestore(resumeActiveGeneration);
   const { sendMessage: sendCompareMessage, cancelCurrentRequest: cancelCompareRequest } = useCompare();
   const [inputValue, setInputValue] = useState('');
   const [isCompareMode, setIsCompareMode] = useState(false);

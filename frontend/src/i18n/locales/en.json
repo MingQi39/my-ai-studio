@@ -89,6 +89,16 @@
     "collapse": "Collapse sidebar",
     "expand": "Expand sidebar"
   },
+  "desktopTabs": {
+    "tabBar": "Open pages",
+    "newTab": "New tab",
+    "pin": "Pin tab",
+    "unpin": "Unpin tab",
+    "close": "Close tab",
+    "pinned": "Pinned",
+    "chat": "AI chat",
+    "interview": "Interview navigator"
+  },
   "workspace": {
     "newChat": "New chat",
     "newChatCreated": "New conversation started",

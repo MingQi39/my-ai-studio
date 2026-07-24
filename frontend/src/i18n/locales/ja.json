@@ -74,6 +74,16 @@
     "collapse": "サイドバーを閉じる",
     "expand": "サイドバーを開く"
   },
+  "desktopTabs": {
+    "tabBar": "開いているページ",
+    "newTab": "新しいタブ",
+    "pin": "タブを固定",
+    "unpin": "固定を解除",
+    "close": "タブを閉じる",
+    "pinned": "固定済み",
+    "chat": "AI チャット",
+    "interview": "面接ナビゲーター"
+  },
   "workspace": {
     "newChat": "新しいチャット",
     "newChatCreated": "新しい会話を開始しました",

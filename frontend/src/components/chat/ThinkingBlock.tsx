@@ -48,7 +48,7 @@ export function ThinkingBlock({ text, isStreaming, isDarkMode = false }: Thinkin
           <div className="relative pl-4 border-l-2 border-blue-500/30 ml-1">
             <p
               className={cn(
-                'text-sm leading-relaxed whitespace-pre-wrap font-sans',
+                'text-sm leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-sans',
                 isDarkMode ? 'text-gray-400' : 'text-gray-600',
               )}
             >

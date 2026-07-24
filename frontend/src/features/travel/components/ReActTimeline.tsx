@@ -51,8 +51,8 @@ type ReActStepDetailProps = {
 
 export function ReActStepDetail({ content, toolCalls, isDarkMode = false }: ReActStepDetailProps) {
   return (
-    <div className="w-full">
-      <div className="bg-white dark:bg-[#151E2E] rounded-lg p-3 border border-slate-200 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-300 mb-2 shadow-sm max-w-none">
+    <div className="w-full min-w-0">
+      <div className="min-w-0 max-w-full overflow-hidden bg-white dark:bg-[#151E2E] rounded-lg p-3 border border-slate-200 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-300 mb-2 shadow-sm">
         <MessageContent content={content} isDarkMode={isDarkMode} />
       </div>
 
@@ -94,7 +94,7 @@ export function ReActStepDetail({ content, toolCalls, isDarkMode = false }: ReAc
                 {toolCall.result && (
                   <div>
                     <span className="font-semibold">结果：</span>
-                    <div className="mt-1 text-xs bg-slate-50 dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 max-h-32 overflow-y-auto">
+                    <div className="mt-1 text-xs whitespace-pre-wrap break-words [overflow-wrap:anywhere] bg-slate-50 dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 max-h-32 overflow-y-auto">
                       {toolCall.result}
                     </div>
                   </div>

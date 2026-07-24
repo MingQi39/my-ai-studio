@@ -38,6 +38,10 @@ dist/
 build/
 *.local
 
+# Electron packaging artifacts (local only)
+frontend/dist-electron/
+frontend/release/
+
 # IDE
 .vscode/*
 !.vscode/settings.json

@@ -74,6 +74,16 @@
     "collapse": "Réduire la barre latérale",
     "expand": "Développer la barre latérale"
   },
+  "desktopTabs": {
+    "tabBar": "Pages ouvertes",
+    "newTab": "Nouvel onglet",
+    "pin": "Épingler l’onglet",
+    "unpin": "Désépingler l’onglet",
+    "close": "Fermer l’onglet",
+    "pinned": "Épinglé",
+    "chat": "Chat IA",
+    "interview": "Guide d’entretien"
+  },
   "workspace": {
     "newChat": "Nouveau chat",
     "newChatCreated": "Nouvelle conversation démarrée",

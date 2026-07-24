@@ -4,6 +4,10 @@ import { useTranslation } from 'react-i18next';
 
 import type { ChatToolRun } from '@/components/chat';
 import { SSEClient } from '@/lib/sseClient';
+import {
+  cancelResumableAgentStream,
+  fetchResumableAgentStreamStatus,
+} from '@/lib/resumableAgentStream';
 
 import { useFitnessRuntime } from '@/features/fitness/FitnessRuntimeContext';
 import { FITNESS_API_BASE, fitnessHeaders } from '@/features/fitness/services/api/client';
@@ -19,6 +23,7 @@ import {
   buildApprovalPreviewFromToolArgs,
   isWriteTool,
 } from '@/features/fitness/utils/fitnessHitl';
+import type { StudioChatMessage } from '@/hooks/studioChat/types';
 
 const SUMMARY_MUTATING_TOOLS = new Set([
   'set_daily_calorie_goal',
@@ -368,6 +373,174 @@ export function useFitnessChat() {
     }
   };
 
+  const resumeActiveGeneration = async (
+    sessionId: string,
+    restoredMessages: StudioChatMessage[],
+  ): Promise<boolean> => {
+    const status = await fetchResumableAgentStreamStatus(
+      `${FITNESS_API_BASE}/agent/status/${sessionId}`,
+      fitnessHeaders(),
+    );
+    if (!status.is_streaming) return false;
+    if (useFitnessChatStore.getState().currentSessionId !== sessionId) return false;
+
+    const store = useFitnessChatStore.getState();
+    const assistantMessageId = `assistant-resume-${sessionId}`;
+    store.setMessages([
+      ...restoredMessages,
+      {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: '',
+        isThinking: true,
+        statusLabel: t('fitness.chat.thinking'),
+        toolRuns: [],
+      },
+    ]);
+    store.setGenerating(true);
+    store.setRecommendations([]);
+
+    let contentBuffer = '';
+    let hasDoneEvent = false;
+    const toolRuns: ChatToolRun[] = [];
+    const pendingTools = new Map<string, ChatToolRun>();
+
+    const syncAssistant = (patch: Partial<StudioChatMessage>) => {
+      useFitnessChatStore.getState().updateMessage(assistantMessageId, patch);
+    };
+
+    const client = new SSEClient<FitnessSSEEvent>({
+      url: `${FITNESS_API_BASE}/agent/resume/${sessionId}`,
+      method: 'GET',
+      headers: fitnessHeaders(),
+      onEvent: (event) => {
+        if (event.type === 'start') {
+          syncAssistant({ statusLabel: t('fitness.chat.thinking'), isThinking: true });
+        }
+
+        if (event.type === 'tool_call_start') {
+          const run: ChatToolRun = {
+            call_id: event.call_id,
+            tool_name: FITNESS_TOOL_LABELS[event.tool_name] ?? event.tool_name,
+            tool_input: event.tool_args,
+            status: 'running',
+          };
+          pendingTools.set(event.call_id, run);
+          toolRuns.push(run);
+          syncAssistant({
+            statusLabel: t('fitness.chat.runningTool', { tool: run.tool_name }),
+            isThinking: true,
+            toolRuns: [...toolRuns],
+          });
+        }
+
+        if (event.type === 'tool_call_result') {
+          const run = pendingTools.get(event.call_id);
+          if (run) {
+            run.status = event.status === 'error' ? 'error' : 'completed';
+            run.tool_output =
+              typeof event.result === 'string'
+                ? event.result
+                : JSON.stringify(event.result ?? event.error ?? '', null, 2);
+          }
+          syncAssistant({ toolRuns: [...toolRuns] });
+        }
+
+        if (event.type === 'tool_progress') {
+          syncAssistant({
+            statusLabel: buildProgressText(t, event),
+            isThinking: true,
+            toolRuns: [...toolRuns],
+          });
+        }
+
+        if (event.type === 'approval_required') {
+          useFitnessChatStore.getState().setPendingApproval({
+            callId: event.call_id,
+            toolName: event.tool_name,
+            toolArgs: event.tool_args,
+            preview:
+              event.preview
+              ?? buildApprovalPreviewFromToolArgs(event.tool_name, event.tool_args),
+            assistantMessageId,
+          });
+          syncAssistant({ statusLabel: undefined, isThinking: false, toolRuns: [...toolRuns] });
+        }
+
+        if (event.type === 'chunk' && event.content) {
+          contentBuffer += event.content;
+          syncAssistant({
+            content: contentBuffer,
+            statusLabel: undefined,
+            isThinking: true,
+            toolRuns: [...toolRuns],
+          });
+        }
+
+        if (event.type === 'final_response' && event.content) {
+          contentBuffer = event.content;
+          syncAssistant({
+            content: contentBuffer,
+            statusLabel: undefined,
+            isThinking: false,
+            toolRuns: [...toolRuns],
+          });
+        }
+
+        if (event.type === 'recommendations') {
+          useFitnessChatStore.getState().setRecommendations(event.recommendations ?? []);
+        }
+
+        if (event.type === 'meal_logged') {
+          refreshTodaySummary();
+        }
+
+        if (event.type === 'error') {
+          const message = event.message || t('fitness.chat.requestFailed');
+          syncAssistant({
+            content: `❌ ${message}`,
+            statusLabel: undefined,
+            isThinking: false,
+            toolRuns: [...toolRuns],
+          });
+          useFitnessChatStore.getState().setGenerating(false);
+        }
+
+        if (event.type === 'done') {
+          hasDoneEvent = true;
+          syncAssistant({
+            content:
+              contentBuffer
+              || (useFitnessChatStore.getState().pendingApproval
+                ? ''
+                : t('fitness.chat.emptyReply')),
+            statusLabel: undefined,
+            isThinking: false,
+            toolRuns: [...toolRuns],
+          });
+          useFitnessChatStore.getState().setGenerating(false);
+        }
+      },
+      onError: (error) => {
+        console.error('Failed to resume fitness generation:', error);
+        useFitnessChatStore.getState().setGenerating(false);
+      },
+      onComplete: () => {
+        if (!hasDoneEvent) {
+          useFitnessChatStore.getState().setGenerating(false);
+        }
+      },
+    });
+
+    currentClientRef.current = client;
+    try {
+      await client.start();
+    } finally {
+      if (currentClientRef.current === client) currentClientRef.current = null;
+    }
+    return true;
+  };
+
   const approvePending = async (userAckText?: string) => {
     const { pendingApproval, currentSessionId, setPendingApproval, addMessage, setGenerating } =
       useFitnessChatStore.getState();
@@ -439,7 +612,14 @@ export function useFitnessChat() {
     currentClientRef.current?.cancel();
     currentClientRef.current = null;
 
-    const { messages, updateMessage, setGenerating } = useFitnessChatStore.getState();
+    const { currentSessionId, messages, updateMessage, setGenerating } =
+      useFitnessChatStore.getState();
+    if (currentSessionId) {
+      void cancelResumableAgentStream(
+        `${FITNESS_API_BASE}/agent/cancel/${currentSessionId}`,
+        fitnessHeaders(),
+      ).catch((error) => console.error('Failed to cancel fitness generation:', error));
+    }
     const thinkingPlaceholder = t('fitness.chat.thinking');
     const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant' && m.isThinking);
     if (lastAssistant) {
@@ -456,5 +636,11 @@ export function useFitnessChat() {
     setGenerating(false);
   };
 
-  return { sendMessage, approvePending, cancelPendingApproval, cancelCurrentRequest };
+  return {
+    sendMessage,
+    resumeActiveGeneration,
+    approvePending,
+    cancelPendingApproval,
+    cancelCurrentRequest,
+  };
 }

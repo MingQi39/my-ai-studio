@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import {
   SPIDER_DRAFT_TARGET_URL_KEY,
@@ -45,7 +45,12 @@ function markInterruptedToolRuns(messages: StudioChatMessage[]): StudioChatMessa
   });
 }
 
-export function useSpiderSessionRestore() {
+export function useSpiderSessionRestore(
+  resumeActiveGeneration: (
+    sessionId: string,
+    messages: StudioChatMessage[],
+  ) => Promise<boolean>,
+) {
   const currentSessionId = useSpiderChatStore((s) => s.currentSessionId);
   const messages = useSpiderChatStore((s) => s.messages);
   const isLoadingHistory = useSpiderChatStore((s) => s.isLoadingHistory);
@@ -58,6 +63,8 @@ export function useSpiderSessionRestore() {
   const setRememberCookies = useSpiderChatStore((s) => s.setRememberCookies);
   const setRestoreInterruptedHint = useSpiderChatStore((s) => s.setRestoreInterruptedHint);
   const { refreshWorkspace } = useSpiderWorkspace();
+  const resumeRef = useRef(resumeActiveGeneration);
+  resumeRef.current = resumeActiveGeneration;
 
   useEffect(() => {
     if (!currentSessionId) return;
@@ -83,22 +90,41 @@ export function useSpiderSessionRestore() {
         );
         const interrupted = wasGenerating || hasIncomplete;
 
-        if (wasGenerating) {
-          sessionStorage.removeItem(SPIDER_GENERATING_SESSION_KEY);
-        }
-
-        if (interrupted) {
-          setRestoreInterruptedHint(true);
-          setMessages(markInterruptedToolRuns(restored));
-        } else {
-          setRestoreInterruptedHint(false);
-          setMessages(restored);
-        }
+        setRestoreInterruptedHint(false);
+        setMessages(restored);
         setTargetUrl(targetUrl ?? readStoredTargetUrl(currentSessionId));
         const storedCookies = readStoredCookies(currentSessionId);
         setRememberCookies(storedCookies.rememberCookies);
         setCookies(storedCookies.cookies);
         void refreshWorkspace();
+
+        void resumeRef.current(currentSessionId, restored)
+          .then((resumed) => {
+            if (useSpiderChatStore.getState().currentSessionId !== currentSessionId) {
+              return;
+            }
+            if (wasGenerating) {
+              sessionStorage.removeItem(SPIDER_GENERATING_SESSION_KEY);
+            }
+            if (resumed) return;
+            if (interrupted) {
+              setRestoreInterruptedHint(true);
+              setMessages(markInterruptedToolRuns(restored));
+            }
+          })
+          .catch((error) => {
+            console.error('Failed to resume spider generation:', error);
+            if (useSpiderChatStore.getState().currentSessionId !== currentSessionId) {
+              return;
+            }
+            if (wasGenerating) {
+              sessionStorage.removeItem(SPIDER_GENERATING_SESSION_KEY);
+            }
+            if (interrupted) {
+              setRestoreInterruptedHint(true);
+              setMessages(markInterruptedToolRuns(restored));
+            }
+          });
       })
       .catch((error) => console.error(error))
       .finally(() => {

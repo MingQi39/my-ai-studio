@@ -45,10 +45,15 @@ export function SpiderChatView({
     isGenerating && (!generatingSessionId || generatingSessionId === currentSessionId);
 
   useSpiderSessionRoute();
-  useSpiderSessionRestore();
   const { refreshWorkspace } = useSpiderWorkspace();
 
-  const { sendMessage, resumeTask, cancelCurrentRequest } = useSpiderChat();
+  const {
+    sendMessage,
+    resumeTask,
+    resumeActiveGeneration,
+    cancelCurrentRequest,
+  } = useSpiderChat();
+  useSpiderSessionRestore(resumeActiveGeneration);
   const [inputValue, setInputValue] = useState('');
   const [resumeDismissed, setResumeDismissed] = useState(false);
 

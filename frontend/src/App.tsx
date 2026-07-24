@@ -7,6 +7,7 @@ import { MainWorkspace } from './components/MainWorkspace';
 import { ControlPanel, DEFAULT_CHAT_TOOLS_STATE, type ChatToolsState } from './components/ControlPanel';
 import { ConnectionModal } from './components/ConnectionModal';
 import { AuthPage } from './components/AuthPage';
+import { DesktopTabBar } from './components/DesktopTabBar';
 import { TravelPage } from './pages/TravelPage';
 import { FitnessPage } from './pages/FitnessPage';
 import { SpiderPage } from './pages/SpiderPage';
@@ -17,6 +18,7 @@ import { spiderBranding } from './features/spider/config/branding';
 import { useSessionRoute } from './hooks/useSessionRoute';
 import { useIsMobile } from './components/ui/use-mobile';
 import { cn } from './components/ui/utils';
+import { useDesktopTabStore } from './stores/useDesktopTabStore';
 
 import {
   User,
@@ -197,6 +199,7 @@ export default function App() {
       console.error('Failed to load model configs:', error);
       if (error instanceof ApiError && error.status === 401) {
         logout();
+        useDesktopTabStore.getState().reset();
         setIsAuthenticated(false);
         setCurrentUser(null);
         setSelectedModel('');
@@ -331,6 +334,7 @@ export default function App() {
 
   const handleLogout = () => {
     logout();
+    useDesktopTabStore.getState().reset();
     setIsAuthenticated(false);
     setCurrentUser(null);
     setSelectedModel('');
@@ -599,176 +603,182 @@ export default function App() {
         </div>
       )}
 
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <MainChatRoute
-              isSidebarOpen={isSidebarOpen}
-              toggleSidebar={toggleSidebar}
-              isDarkMode={isDarkMode}
-              hasModelConfig={hasModelConfig}
-              onOpenConnectionModal={openConnectionModal}
-              onSelectProviderModel={handleSelectProviderModel}
-              enableReasoning={enableReasoning}
-              sessionRefreshTrigger={sessionRefreshTrigger}
-              onSessionsChange={refreshSessions}
-              systemPrompt={currentInstruction?.content || tempSystemPrompt}
-              modelConfigId={selectedModelConfigId}
-              selectedModel={selectedModel}
-              isControlPanelOpen={isControlPanelOpen}
-              toggleControlPanel={toggleControlPanel}
-              toolsState={toolsState}
-              onToolsStateChange={handleToolsStateChange}
-            />
-          }
-        />
-        <Route
-          path="/session/:sessionId"
-          element={
-            <MainChatRoute
-              isSidebarOpen={isSidebarOpen}
-              toggleSidebar={toggleSidebar}
-              isDarkMode={isDarkMode}
-              hasModelConfig={hasModelConfig}
-              onOpenConnectionModal={openConnectionModal}
-              onSelectProviderModel={handleSelectProviderModel}
-              enableReasoning={enableReasoning}
-              sessionRefreshTrigger={sessionRefreshTrigger}
-              onSessionsChange={refreshSessions}
-              systemPrompt={currentInstruction?.content || tempSystemPrompt}
-              modelConfigId={selectedModelConfigId}
-              selectedModel={selectedModel}
-              isControlPanelOpen={isControlPanelOpen}
-              toggleControlPanel={toggleControlPanel}
-              toolsState={toolsState}
-              onToolsStateChange={handleToolsStateChange}
-            />
-          }
-        />
-        <Route
-          path="/travel/*"
-          element={
-            <TravelPage
-              isDarkMode={isDarkMode}
-              isSidebarOpen={isSidebarOpen}
-              toggleSidebar={toggleSidebar}
-              selectedModel={selectedModel}
-              selectedModelConfigId={selectedModelConfigId}
-              isControlPanelOpen={isControlPanelOpen}
-              toggleControlPanel={toggleControlPanel}
-              onOpenModelSettings={() => openConnectionModal()}
-            />
-          }
-        />
-        <Route
-          path="/fitness/*"
-          element={
-            <FitnessPage
-              isDarkMode={isDarkMode}
-              isSidebarOpen={isSidebarOpen}
-              toggleSidebar={toggleSidebar}
-              selectedModel={selectedModel}
-              selectedModelConfigId={selectedModelConfigId}
-              isControlPanelOpen={isControlPanelOpen}
-              toggleControlPanel={toggleControlPanel}
-              onOpenModelSettings={() => openConnectionModal()}
-            />
-          }
-        />
-        <Route
-          path="/spider/*"
-          element={
-            <SpiderPage
-              isDarkMode={isDarkMode}
-              isSidebarOpen={isSidebarOpen}
-              toggleSidebar={toggleSidebar}
-              selectedModel={selectedModel}
-              selectedModelConfigId={selectedModelConfigId}
-              isControlPanelOpen={isControlPanelOpen}
-              toggleControlPanel={toggleControlPanel}
-              onOpenModelSettings={() => openConnectionModal()}
-            />
-          }
-        />
-        <Route
-          path="/interview"
-          element={
-            <InterviewPage
-              isSidebarOpen={isSidebarOpen}
-              toggleSidebar={toggleSidebar}
-            />
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {!isMobile && <DesktopTabBar />}
 
-      {/* Control panel: desktop rail or mobile overlay */}
-      {activeTab === 'history' &&
-        (!isMobile ? (
-          <div
-            className={cn(
-              'transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0',
-              showChatControlPanel ? 'w-[300px] opacity-100' : 'w-0 opacity-0',
-            )}
-          >
-            <ControlPanel
-              onModelClick={() => openConnectionModal()}
-              selectedModel={selectedModel}
-              isDarkMode={isDarkMode}
-              enableReasoning={enableReasoning}
-              onEnableReasoningChange={setEnableReasoning}
-              currentInstruction={currentInstruction}
-              onInstructionChange={setCurrentInstruction}
-              tempSystemPrompt={tempSystemPrompt}
-              onTempSystemPromptChange={setTempSystemPrompt}
-              isOpen={isControlPanelOpen}
-              togglePanel={toggleControlPanel}
-              toolsState={toolsState}
-              onToolsStateChange={handleToolsStateChange}
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <MainChatRoute
+                  isSidebarOpen={isSidebarOpen}
+                  toggleSidebar={toggleSidebar}
+                  isDarkMode={isDarkMode}
+                  hasModelConfig={hasModelConfig}
+                  onOpenConnectionModal={openConnectionModal}
+                  onSelectProviderModel={handleSelectProviderModel}
+                  enableReasoning={enableReasoning}
+                  sessionRefreshTrigger={sessionRefreshTrigger}
+                  onSessionsChange={refreshSessions}
+                  systemPrompt={currentInstruction?.content || tempSystemPrompt}
+                  modelConfigId={selectedModelConfigId}
+                  selectedModel={selectedModel}
+                  isControlPanelOpen={isControlPanelOpen}
+                  toggleControlPanel={toggleControlPanel}
+                  toolsState={toolsState}
+                  onToolsStateChange={handleToolsStateChange}
+                />
+              }
             />
-          </div>
-        ) : (
-          <div
-            className={cn(
-              'fixed inset-0 z-40 transition-opacity duration-300',
-              isControlPanelOpen ? 'pointer-events-auto' : 'pointer-events-none',
-            )}
-            aria-hidden={!isControlPanelOpen}
-          >
-            <button
-              type="button"
-              className={cn(
-                'absolute inset-0 bg-black/50 transition-opacity duration-300',
-                isControlPanelOpen ? 'opacity-100' : 'opacity-0',
-              )}
-              onClick={() => setIsControlPanelOpen(false)}
-              aria-label="Close settings panel"
+            <Route
+              path="/session/:sessionId"
+              element={
+                <MainChatRoute
+                  isSidebarOpen={isSidebarOpen}
+                  toggleSidebar={toggleSidebar}
+                  isDarkMode={isDarkMode}
+                  hasModelConfig={hasModelConfig}
+                  onOpenConnectionModal={openConnectionModal}
+                  onSelectProviderModel={handleSelectProviderModel}
+                  enableReasoning={enableReasoning}
+                  sessionRefreshTrigger={sessionRefreshTrigger}
+                  onSessionsChange={refreshSessions}
+                  systemPrompt={currentInstruction?.content || tempSystemPrompt}
+                  modelConfigId={selectedModelConfigId}
+                  selectedModel={selectedModel}
+                  isControlPanelOpen={isControlPanelOpen}
+                  toggleControlPanel={toggleControlPanel}
+                  toolsState={toolsState}
+                  onToolsStateChange={handleToolsStateChange}
+                />
+              }
             />
-            <div
-              className={cn(
-                'absolute inset-y-0 right-0 w-[min(300px,90vw)] shadow-2xl transition-transform duration-300 ease-in-out',
-                isControlPanelOpen ? 'translate-x-0' : 'translate-x-full',
-              )}
-            >
-              <ControlPanel
-                onModelClick={() => openConnectionModal()}
-                selectedModel={selectedModel}
-                isDarkMode={isDarkMode}
-                enableReasoning={enableReasoning}
-                onEnableReasoningChange={setEnableReasoning}
-                currentInstruction={currentInstruction}
-                onInstructionChange={setCurrentInstruction}
-                tempSystemPrompt={tempSystemPrompt}
-                onTempSystemPromptChange={setTempSystemPrompt}
-                isOpen={isControlPanelOpen}
-                togglePanel={toggleControlPanel}
-                toolsState={toolsState}
-                onToolsStateChange={handleToolsStateChange}
-              />
-            </div>
-          </div>
-        ))}
+            <Route
+              path="/travel/*"
+              element={
+                <TravelPage
+                  isDarkMode={isDarkMode}
+                  isSidebarOpen={isSidebarOpen}
+                  toggleSidebar={toggleSidebar}
+                  selectedModel={selectedModel}
+                  selectedModelConfigId={selectedModelConfigId}
+                  isControlPanelOpen={isControlPanelOpen}
+                  toggleControlPanel={toggleControlPanel}
+                  onOpenModelSettings={() => openConnectionModal()}
+                />
+              }
+            />
+            <Route
+              path="/fitness/*"
+              element={
+                <FitnessPage
+                  isDarkMode={isDarkMode}
+                  isSidebarOpen={isSidebarOpen}
+                  toggleSidebar={toggleSidebar}
+                  selectedModel={selectedModel}
+                  selectedModelConfigId={selectedModelConfigId}
+                  isControlPanelOpen={isControlPanelOpen}
+                  toggleControlPanel={toggleControlPanel}
+                  onOpenModelSettings={() => openConnectionModal()}
+                />
+              }
+            />
+            <Route
+              path="/spider/*"
+              element={
+                <SpiderPage
+                  isDarkMode={isDarkMode}
+                  isSidebarOpen={isSidebarOpen}
+                  toggleSidebar={toggleSidebar}
+                  selectedModel={selectedModel}
+                  selectedModelConfigId={selectedModelConfigId}
+                  isControlPanelOpen={isControlPanelOpen}
+                  toggleControlPanel={toggleControlPanel}
+                  onOpenModelSettings={() => openConnectionModal()}
+                />
+              }
+            />
+            <Route
+              path="/interview"
+              element={
+                <InterviewPage
+                  isSidebarOpen={isSidebarOpen}
+                  toggleSidebar={toggleSidebar}
+                />
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+
+          {/* Control panel: desktop rail or mobile overlay */}
+          {activeTab === 'history' &&
+            (!isMobile ? (
+              <div
+                className={cn(
+                  'transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0',
+                  showChatControlPanel ? 'w-[300px] opacity-100' : 'w-0 opacity-0',
+                )}
+              >
+                <ControlPanel
+                  onModelClick={() => openConnectionModal()}
+                  selectedModel={selectedModel}
+                  isDarkMode={isDarkMode}
+                  enableReasoning={enableReasoning}
+                  onEnableReasoningChange={setEnableReasoning}
+                  currentInstruction={currentInstruction}
+                  onInstructionChange={setCurrentInstruction}
+                  tempSystemPrompt={tempSystemPrompt}
+                  onTempSystemPromptChange={setTempSystemPrompt}
+                  isOpen={isControlPanelOpen}
+                  togglePanel={toggleControlPanel}
+                  toolsState={toolsState}
+                  onToolsStateChange={handleToolsStateChange}
+                />
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  'fixed inset-0 z-40 transition-opacity duration-300',
+                  isControlPanelOpen ? 'pointer-events-auto' : 'pointer-events-none',
+                )}
+                aria-hidden={!isControlPanelOpen}
+              >
+                <button
+                  type="button"
+                  className={cn(
+                    'absolute inset-0 bg-black/50 transition-opacity duration-300',
+                    isControlPanelOpen ? 'opacity-100' : 'opacity-0',
+                  )}
+                  onClick={() => setIsControlPanelOpen(false)}
+                  aria-label="Close settings panel"
+                />
+                <div
+                  className={cn(
+                    'absolute inset-y-0 right-0 w-[min(300px,90vw)] shadow-2xl transition-transform duration-300 ease-in-out',
+                    isControlPanelOpen ? 'translate-x-0' : 'translate-x-full',
+                  )}
+                >
+                  <ControlPanel
+                    onModelClick={() => openConnectionModal()}
+                    selectedModel={selectedModel}
+                    isDarkMode={isDarkMode}
+                    enableReasoning={enableReasoning}
+                    onEnableReasoningChange={setEnableReasoning}
+                    currentInstruction={currentInstruction}
+                    onInstructionChange={setCurrentInstruction}
+                    tempSystemPrompt={tempSystemPrompt}
+                    onTempSystemPromptChange={setTempSystemPrompt}
+                    isOpen={isControlPanelOpen}
+                    togglePanel={toggleControlPanel}
+                    toolsState={toolsState}
+                    onToolsStateChange={handleToolsStateChange}
+                  />
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
 
       <ConnectionModal
         isOpen={isConnectionModalOpen}

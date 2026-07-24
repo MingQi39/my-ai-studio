@@ -12,6 +12,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.resumable_stream import resumable_stream_key, resumable_stream_manager
+from app.db.database import async_session_factory
 from app.dependencies import get_current_user_auth, get_db, get_model_service, get_session_service
 from app.fitness.schemas import (
     FitnessAgentApproveRequest,
@@ -20,6 +22,7 @@ from app.fitness.schemas import (
     FitnessGoalUpdate,
 )
 from app.models.database import SessionType
+from app.services.session_service import SessionService
 from app.fitness.services.chat_persistence import (
     messages_to_history,
     resolve_fitness_session,
@@ -133,11 +136,7 @@ async def fitness_agent_run(
     user_id: UUID = Depends(get_current_user_auth),
     model_service=Depends(get_model_service),
     session_service=Depends(get_session_service),
-    db: AsyncSession = Depends(get_db),
 ):
-    # create a dedicated fitness service from the same DB session
-    fitness_service = FitnessService(db)
-
     try:
         session_id, created = await resolve_fitness_session(
             session_service=session_service,
@@ -166,24 +165,33 @@ async def fitness_agent_run(
     user_timezone = request.timezone
 
     async def event_stream() -> AsyncIterator[dict[str, Any]]:
-        yield {"type": "session", "session_id": str(session_id), "created": created}
-        inner = fitness_agent_stream(
-            message=request.message,
-            conversation_history=conversation_history,
-            max_rounds=max_rounds,
-            user_timezone=user_timezone,
-            user_id=user_id,
-            openai_client=openai_client,
-            llm_api_key=ctx.api_key,
-            llm_base_url=ctx.base_url,
-            model_name=model_name,
-            fitness_service=fitness_service,
-        )
-        async for event in _persist_fitness_stream(inner, session_service, session_id):
-            yield event
+        async with async_session_factory() as background_db:
+            background_sessions = SessionService(background_db)
+            fitness_service = FitnessService(background_db)
+            yield {"type": "session", "session_id": str(session_id), "created": created}
+            inner = fitness_agent_stream(
+                message=request.message,
+                conversation_history=conversation_history,
+                max_rounds=max_rounds,
+                user_timezone=user_timezone,
+                user_id=user_id,
+                openai_client=openai_client,
+                llm_api_key=ctx.api_key,
+                llm_base_url=ctx.base_url,
+                model_name=model_name,
+                fitness_service=fitness_service,
+            )
+            async for event in _persist_fitness_stream(inner, background_sessions, session_id):
+                yield event
+
+    stream_key = resumable_stream_key("fitness", user_id, session_id)
+    try:
+        await resumable_stream_manager.start(stream_key, event_stream)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return StreamingResponse(
-        format_sse_stream(event_stream()),
+        format_sse_stream(resumable_stream_manager.subscribe(stream_key)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -191,6 +199,67 @@ async def fitness_agent_run(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+async def _validate_fitness_stream_session(
+    session_id: UUID,
+    user_id: UUID,
+    session_service,
+) -> None:
+    session = await session_service.get_session(session_id, user_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.session_type != SessionType.fitness:
+        raise HTTPException(status_code=400, detail="Not a fitness session")
+
+
+@router.get("/agent/status/{session_id}")
+async def fitness_agent_status(
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service=Depends(get_session_service),
+) -> dict[str, Any]:
+    await _validate_fitness_stream_session(session_id, user_id, session_service)
+    return {
+        "session_id": str(session_id),
+        **resumable_stream_manager.status(
+            resumable_stream_key("fitness", user_id, session_id)
+        ),
+    }
+
+
+@router.get("/agent/resume/{session_id}")
+async def fitness_agent_resume(
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service=Depends(get_session_service),
+) -> StreamingResponse:
+    await _validate_fitness_stream_session(session_id, user_id, session_service)
+    stream_key = resumable_stream_key("fitness", user_id, session_id)
+    if resumable_stream_manager.get(stream_key) is None:
+        raise HTTPException(status_code=404, detail="No resumable stream for this session")
+    return StreamingResponse(
+        format_sse_stream(resumable_stream_manager.subscribe(stream_key)),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/agent/cancel/{session_id}")
+async def fitness_agent_cancel(
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_auth),
+    session_service=Depends(get_session_service),
+) -> dict[str, bool]:
+    await _validate_fitness_stream_session(session_id, user_id, session_service)
+    cancelled = await resumable_stream_manager.cancel(
+        resumable_stream_key("fitness", user_id, session_id)
+    )
+    return {"cancelled": cancelled}
 
 
 @router.post("/agent/approve", response_model=FitnessAgentApproveResponse)
@@ -293,4 +362,3 @@ async def fitness_delete_diary_entry(
     if not ok:
         raise HTTPException(status_code=404, detail="Entry not found")
     return {"ok": True}
-

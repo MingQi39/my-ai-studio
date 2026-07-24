@@ -6,13 +6,18 @@ import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useChatStore } from '@/features/travel/stores/useChatStore';
 import { loadTravelSessionMessages } from '@/features/travel/services/api/sessions';
+import type { Message } from '@/features/travel/stores/useChatStore';
 
-export function useTravelSessionRestore() {
+export function useTravelSessionRestore(
+  resumeActiveGeneration: (sessionId: string, messages: Message[]) => Promise<boolean>,
+) {
   const currentSessionId = useChatStore((state) => state.currentSessionId);
   const messages = useChatStore((state) => state.messages);
   const sessionEpoch = useChatStore((state) => state.sessionEpoch);
   const restoredRef = useRef<string | null>(null);
   const loadingRef = useRef<string | null>(null);
+  const resumeRef = useRef(resumeActiveGeneration);
+  resumeRef.current = resumeActiveGeneration;
 
   useEffect(() => {
     if (!currentSessionId) {
@@ -54,6 +59,9 @@ export function useTravelSessionRestore() {
         if (state.sessionEpoch !== epochAtStart) return;
         if (state.currentSessionId !== sessionIdAtStart) return;
         setMessages(loaded);
+        void resumeRef.current(sessionIdAtStart, loaded).catch((error) => {
+          console.error('Failed to resume travel generation:', error);
+        });
       })
       .catch((error) => {
         console.error('Failed to restore travel session:', error);

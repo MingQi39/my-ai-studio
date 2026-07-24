@@ -74,6 +74,16 @@
     "collapse": "Contraer barra lateral",
     "expand": "Expandir barra lateral"
   },
+  "desktopTabs": {
+    "tabBar": "Páginas abiertas",
+    "newTab": "Nueva pestaña",
+    "pin": "Fijar pestaña",
+    "unpin": "Desfijar pestaña",
+    "close": "Cerrar pestaña",
+    "pinned": "Fijada",
+    "chat": "Chat de IA",
+    "interview": "Guía de entrevistas"
+  },
   "workspace": {
     "newChat": "Nuevo chat",
     "newChatCreated": "Nueva conversación iniciada",

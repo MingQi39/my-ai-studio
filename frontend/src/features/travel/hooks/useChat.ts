@@ -1,18 +1,100 @@
 /**
- * 统一对话 Hook — 连接 /api/v1/travel/chat
+ * Unified travel chat hook with refresh-safe SSE replay.
  */
 
-import { toast } from 'sonner';
-import { useChatStore, type ReActStep, type ToolCall } from '@/features/travel/stores/useChatStore';
-import { SSEClient } from '@/features/travel/services/sse/SSEClient';
-import type { SSEEvent } from '@/features/travel/types/events';
-import { TRAVEL_API_BASE, travelHeaders } from '@/features/travel/services/api/client';
-import { useTravelRuntime } from '@/features/travel/TravelRuntimeContext';
 import { useRef } from 'react';
+import { toast } from 'sonner';
+
+import {
+  cancelResumableAgentStream,
+  fetchResumableAgentStreamStatus,
+} from '@/lib/resumableAgentStream';
+import { SSEClient } from '@/features/travel/services/sse/SSEClient';
+import { TRAVEL_API_BASE, travelHeaders } from '@/features/travel/services/api/client';
+import { useChatStore, type Message } from '@/features/travel/stores/useChatStore';
+import {
+  createTravelStreamState,
+  reduceTravelStreamEvent,
+} from '@/features/travel/streams/travelStreamReducer';
+import type { SSEEvent } from '@/features/travel/types/events';
+import { useTravelRuntime } from '@/features/travel/TravelRuntimeContext';
+
+type RunStreamOptions = {
+  url: string;
+  method: 'GET' | 'POST';
+  body?: string;
+  assistantMessageId: string;
+  mode: 'llm' | 'agent';
+};
 
 export function useChat() {
   const { modelConfigId } = useTravelRuntime();
   const currentClientRef = useRef<SSEClient | null>(null);
+
+  const runStream = async ({
+    url,
+    method,
+    body,
+    assistantMessageId,
+    mode,
+  }: RunStreamOptions) => {
+    const streamState = createTravelStreamState(mode);
+    const {
+      updateMessage,
+      setGenerating,
+      setCurrentSessionId,
+      bumpSessionList,
+    } = useChatStore.getState();
+
+    const failAssistant = (message: string) => {
+      updateMessage(assistantMessageId, { content: `❌ ${message}` });
+      toast.error(message);
+      setGenerating(false);
+    };
+
+    const client = new SSEClient({
+      url,
+      method,
+      headers: travelHeaders(),
+      body,
+      onEvent: (event: SSEEvent) => {
+        const effect = reduceTravelStreamEvent(streamState, event);
+        if (effect.sessionId) {
+          setCurrentSessionId(effect.sessionId);
+          bumpSessionList();
+        }
+        if (effect.message) {
+          updateMessage(assistantMessageId, effect.message);
+        }
+        if (effect.error) {
+          failAssistant(effect.error);
+        }
+        if (effect.done) {
+          setGenerating(false);
+        }
+      },
+      onError: (error) => {
+        failAssistant(error.message || '请求失败，请检查后端与模型配置');
+      },
+      onComplete: () => {
+        const { isGenerating, setGenerating: stopGenerating } = useChatStore.getState();
+        if (!streamState.hasDoneEvent && isGenerating) {
+          failAssistant('连接已中断，生成任务仍在后台运行；刷新页面可自动恢复。');
+        } else if (isGenerating) {
+          stopGenerating(false);
+        }
+      },
+    });
+
+    currentClientRef.current = client;
+    try {
+      await client.start();
+    } finally {
+      if (currentClientRef.current === client) {
+        currentClientRef.current = null;
+      }
+    }
+  };
 
   const sendMessage = async (text: string) => {
     if (!modelConfigId) {
@@ -21,10 +103,7 @@ export function useChat() {
 
     const {
       addMessage,
-      updateMessage,
       setGenerating,
-      setCurrentSessionId,
-      bumpSessionList,
       chatMode: mode,
     } = useChatStore.getState();
 
@@ -46,159 +125,82 @@ export function useChat() {
     });
     setGenerating(true);
 
-    let contentBuffer = '';
-    const thinkingSteps: ReActStep[] = [];
-    const pendingToolCalls: Map<string, ToolCall> = new Map();
-    let hasFinalResponse = false;
-    let hasDoneEvent = false;
-
-    const updateAssistant = (updates: Partial<{ content: string; thinkingSteps: ReActStep[] }>) => {
-      updateMessage(assistantMessageId, updates);
-    };
-
-    const failAssistant = (message: string) => {
-      updateAssistant({ content: `❌ ${message}` });
-      toast.error(message);
-      setGenerating(false);
-    };
-
-    const sessionIdForRequest = useChatStore.getState().currentSessionId;
-
-    const client = new SSEClient({
+    await runStream({
       url: `${TRAVEL_API_BASE}/travel/chat`,
       method: 'POST',
-      headers: travelHeaders(),
       body: JSON.stringify({
         message: text,
         mode,
-        session_id: sessionIdForRequest,
+        session_id: useChatStore.getState().currentSessionId,
         max_rounds: 3,
         model_config_id: modelConfigId,
       }),
-      onEvent: (event: SSEEvent) => {
-        if (event.type === 'session' && 'session_id' in event) {
-          setCurrentSessionId(String(event.session_id));
-          bumpSessionList();
-        }
-
-        if (event.type === 'start' && mode === 'agent') {
-          updateAssistant({ content: '🔍 正在分析并调用工具，请稍候…' });
-        }
-
-        if (event.type === 'chunk' && 'content' in event && event.content) {
-          contentBuffer += event.content;
-          updateAssistant({ content: contentBuffer });
-        }
-
-        if (event.type === 'tool_call_start' && 'call_id' in event) {
-          pendingToolCalls.set(event.call_id, {
-            id: event.call_id,
-            tool_name: event.tool_name,
-            tool_args: event.tool_args,
-            status: 'pending',
-          });
-        }
-
-        if (event.type === 'tool_call_result' && 'call_id' in event) {
-          const toolCall = pendingToolCalls.get(event.call_id);
-          if (toolCall) {
-            toolCall.result = event.result;
-            toolCall.status = event.status;
-            toolCall.duration_ms = event.duration_ms;
-            toolCall.error = event.error;
-          }
-        }
-
-        if (event.type === 'step' && 'step_type' in event && event.content) {
-          if (event.step_type === 'Act') {
-            const completedToolCalls = Array.from(pendingToolCalls.values()).filter(
-              (tc) => tc.status !== 'pending',
-            );
-            thinkingSteps.push({
-              type: event.step_type,
-              content: event.content,
-              round: event.round || 0,
-              sequence: event.sequence || 0,
-              toolCalls: completedToolCalls,
-            });
-            pendingToolCalls.clear();
-          } else {
-            thinkingSteps.push({
-              type: event.step_type,
-              content: event.content,
-              round: event.round || 0,
-              sequence: event.sequence || 0,
-            });
-          }
-
-          if (mode === 'agent') {
-            updateAssistant({
-              content: '💭 正在推理中…',
-              thinkingSteps: [...thinkingSteps],
-            });
-          }
-        }
-
-        if (event.type === 'final_response' && 'content' in event && event.content) {
-          contentBuffer = event.content;
-          hasFinalResponse = true;
-          updateAssistant({ content: '✍️ 正在整理最终回复…', thinkingSteps: [...thinkingSteps] });
-        }
-
-        if (event.type === 'done') {
-          hasDoneEvent = true;
-          if (mode === 'agent') {
-            if (!hasFinalResponse && !contentBuffer && thinkingSteps.length > 0) {
-              const lastThinkStep = thinkingSteps.filter((s) => s.type === 'Think').pop();
-              if (lastThinkStep) {
-                contentBuffer = lastThinkStep.content;
-              }
-            }
-            updateAssistant({
-              content: contentBuffer || '已完成推理，但未生成最终回复。',
-              thinkingSteps: [...thinkingSteps],
-            });
-          } else if (mode === 'llm') {
-            updateAssistant({ content: contentBuffer || '无回复内容' });
-          }
-          setGenerating(false);
-        }
-
-        if (event.type === 'error' && 'message' in event) {
-          failAssistant(event.message);
-          pendingToolCalls.clear();
-        }
-      },
-      onError: (error) => {
-        failAssistant(error.message || '请求失败，请检查后端与模型配置');
-      },
-      onComplete: () => {
-        const { isGenerating, setGenerating: stopGenerating } = useChatStore.getState();
-        if (!hasDoneEvent && isGenerating) {
-          failAssistant('连接已中断，未收到完整回复。请确认后端已启动并重试。');
-        } else if (isGenerating) {
-          stopGenerating(false);
-        }
-      },
+      assistantMessageId,
+      mode,
     });
+  };
 
-    currentClientRef.current = client;
-    await client.start();
-    currentClientRef.current = null;
+  const resumeActiveGeneration = async (
+    sessionId: string,
+    restoredMessages: Message[],
+  ): Promise<boolean> => {
+    const status = await fetchResumableAgentStreamStatus(
+      `${TRAVEL_API_BASE}/travel/chat/status/${sessionId}`,
+      travelHeaders(),
+    );
+    if (!status.is_streaming) return false;
+    if (useChatStore.getState().currentSessionId !== sessionId) return false;
+
+    const mode = status.metadata.mode === 'llm' ? 'llm' : 'agent';
+    const assistantMessageId = `assistant-resume-${sessionId}`;
+    useChatStore.getState().setMessages([
+      ...restoredMessages,
+      {
+        id: assistantMessageId,
+        role: 'assistant',
+        content: mode === 'agent' ? '🔄 正在恢复 Agent…' : '🔄 正在恢复回复…',
+        mode,
+        thinkingSteps: [],
+        timestamp: Date.now(),
+      },
+    ]);
+    useChatStore.getState().setGenerating(true);
+
+    await runStream({
+      url: `${TRAVEL_API_BASE}/travel/chat/resume/${sessionId}`,
+      method: 'GET',
+      assistantMessageId,
+      mode,
+    });
+    return true;
   };
 
   const cancelCurrentRequest = () => {
     currentClientRef.current?.cancel();
     currentClientRef.current = null;
 
-    const { messages, updateMessage, setGenerating } = useChatStore.getState();
-    const thinkingMarkers = ['🔄 正在连接 Agent…', '🔄 正在思考…', '🔍 正在分析并调用工具，请稍候…', '💭 正在推理中…', '✍️ 正在整理最终回复…'];
-    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+    const { currentSessionId, messages, updateMessage, setGenerating } = useChatStore.getState();
+    if (currentSessionId) {
+      void cancelResumableAgentStream(
+        `${TRAVEL_API_BASE}/travel/chat/cancel/${currentSessionId}`,
+        travelHeaders(),
+      ).catch((error) => console.error('Failed to cancel travel generation:', error));
+    }
+    const thinkingMarkers = [
+      '🔄 正在连接 Agent…',
+      '🔄 正在思考…',
+      '🔄 正在恢复 Agent…',
+      '🔄 正在恢复回复…',
+      '🔍 正在分析并调用工具，请稍候…',
+      '💭 正在推理中…',
+      '✍️ 正在整理最终回复…',
+    ];
+    const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant');
     if (lastAssistant) {
       const hasPartialContent =
-        !!lastAssistant.content &&
-        !thinkingMarkers.includes(lastAssistant.content) &&
-        !lastAssistant.content.startsWith('❌');
+        Boolean(lastAssistant.content)
+        && !thinkingMarkers.includes(lastAssistant.content)
+        && !lastAssistant.content.startsWith('❌');
       updateMessage(lastAssistant.id, {
         content: hasPartialContent ? lastAssistant.content : '已停止生成',
       });
@@ -206,5 +208,5 @@ export function useChat() {
     setGenerating(false);
   };
 
-  return { sendMessage, cancelCurrentRequest };
+  return { sendMessage, resumeActiveGeneration, cancelCurrentRequest };
 }

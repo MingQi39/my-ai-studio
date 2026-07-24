@@ -89,6 +89,16 @@
     "collapse": "收起侧边栏",
     "expand": "展开侧边栏"
   },
+  "desktopTabs": {
+    "tabBar": "打开的页面",
+    "newTab": "新建标签页",
+    "pin": "固定标签页",
+    "unpin": "取消固定",
+    "close": "关闭标签页",
+    "pinned": "已固定",
+    "chat": "AI 对话",
+    "interview": "面试导航"
+  },
   "workspace": {
     "newChat": "新对话",
     "newChatCreated": "已创建新对话",
